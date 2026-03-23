@@ -1,0 +1,3 @@
+[submodule "crispr-BEAN-FUSE"]
+	path = crispr-BEAN-FUSE
+	url = https://github.com/TYTYBU/crispr-BEAN-FUSE.git
