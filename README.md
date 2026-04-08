@@ -7,7 +7,8 @@ Note that the code and data used to generate Figure 4 or S4 are not made availab
 
 To comment on the structure of the directory, Figure_Plots_Zhou_et_al contains the data, scripts, and outputs relevant to rendering all of the figures in the paper, which are located in the directories `data`, `scripts`, and `output` respectively. 
 
-**Description of figures:**
+**Description of figures:**  
+
 **Figure 1.** Activity-normalized prime editing screening (ANPE) pipeline and benchmarking.  
 **Figure 2.** LDLR137-219 screen functional scores reflect domain conservation and computational pathogenicity scores.  
 **Figure 3.** Analysis of correlates of prime editing efficiency and functional scores from LDLR-FL screen.  
