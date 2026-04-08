@@ -19,7 +19,7 @@ To comment on the structure of the directory, Figure_Plots_Zhou_et_al contains t
   
 **Figure S1.** LDLR prime editing library design.  
 **Figure S2.** Benchmarking the ANPE pipeline with LDLR137-219.  
-**Figure S3.** Assessing reproducibility and concordance of LDLR-FL data.   
+**Figure S3.** Assessing reproducibility, and concordance, and off-target effects of LDLR-FL data.  
 **Figure S4.** Comparison of LDLR-FL FUSE data to UK BioBank LDL-C levels.    
 **Figure S5.** In silico stability and affinity analysis of LDLR variants.   
 **Figure S6.** LDLR-mCherry expression and LDL binding versus uptake tests.  
