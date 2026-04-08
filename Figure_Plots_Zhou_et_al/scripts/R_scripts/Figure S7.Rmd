@@ -1,0 +1,327 @@
+---
+title: "Figure S7"
+author: "Phil Zhou"
+date: "2025-11-18"
+output: html_document
+---
+
+```{r load_packages}
+library(svglite)
+library(readr)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(ggrepel)
+library(readxl)
+library(tidyverse)
+library(pheatmap)
+library(viridis)
+library(gplots)
+library(zoo)
+library(patchwork)
+library(corrplot)
+library(ggpubr)
+library(tidyr)
+library(here)
+```
+
+```{r load_dfs}
+#Load in the data
+BEAN_FUSE_FL <- read_csv(
+  here("data", "0326_LDLR_mastersheet.csv")
+)
+
+alphagenome_SA_raw <- read.csv(
+  here("data", "splicing_analysis", "AlphaGenome_SA.csv")
+)
+```
+
+```{r fig_S7A}
+alphagenome_SA_raw <- alphagenome_SA_raw %>%
+  select(where(~ !all(is.na(.))))
+
+alphagenome_SA <- alphagenome_SA_raw %>%
+  pivot_longer(
+    cols = c(Intronic, Exonic, not.in.LDLR.FL),
+    names_to = "region_type",
+    values_to = "score"
+  ) %>%
+  # drop rows where that region has no score
+  filter(!is.na(score)) %>%
+  # make nicer labels if you want
+  mutate(
+    region_type = recode(
+      region_type,
+      "Intronic"              = "intronic",
+      "Exonic"                = "exonic",
+      "exonic_not_in_LDLR_FL" = "exonic_not_in_LDLR_FL"
+    )
+  )
+
+base_theme <- theme_classic() +
+  theme(
+    axis.title.x = element_text(size = 20, color = "black"),  # x-axis title
+    axis.title.y = element_text(size = 20, color = "black"),  # y-axis title
+    axis.text.x  = element_text(size = 18, color = "black"),  # x tick labels
+    axis.text.y  = element_text(size = 18, color = "black"),
+    legend.position = "none"
+  )
+
+
+# --- First plot (BEAN vs Tabet uptake score)
+fig_S7A <- ggplot(
+  alphagenome_SA,
+  aes(x = Distance.to.exon.start,
+      y = score,
+      color = region_type)
+) +
+  geom_point(size = 2, alpha = 0.7, shape = 16) +
+  scale_color_manual(
+    values = c(
+      intronic = "blue",
+      exonic = "green",
+      not.in.LDLR.FL = "red"
+    )
+  ) +
+  theme_classic() + labs(
+    x = "Distance to exon start",
+    y = "AlphaGenome splice effect"
+  ) +
+  base_theme
+
+#print out figure panel
+fig_S7A
+
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_S7"), "FigS7A.pdf"),
+  plot     = fig_S7A,
+  width    = 6,
+  height   = 4,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r fig_S7B}
+splicing_variants_615 <- BEAN_FUSE_FL[BEAN_FUSE_FL$Position %in% c(615), ]$`Variant ID`
+splicing_variants_713 <- BEAN_FUSE_FL[BEAN_FUSE_FL$Position %in% c(713), ]$`Variant ID`
+splicing_variants_770 <- BEAN_FUSE_FL[BEAN_FUSE_FL$Position %in% c(770), ]$`Variant ID`
+
+# Add cysteine flag
+BEAN_FUSE_FL <- BEAN_FUSE_FL %>%
+  mutate(is_cysteine = `Starting AA` == "C")
+
+# ---- Extract their coordinates from the dataset
+splicing_tabet_615 <- BEAN_FUSE_FL %>%
+  filter(`Variant ID` %in% splicing_variants_615)
+
+splicing_tabet_713 <- BEAN_FUSE_FL %>%
+  filter(`Variant ID` %in% splicing_variants_713)
+
+splicing_tabet_770 <- BEAN_FUSE_FL %>%
+  filter(`Variant ID` %in% splicing_variants_770)
+
+# ---- Base plot aesthetic settings
+base_theme <- theme_classic() +
+  theme(
+    axis.title.x = element_text(size = 20, color = "black"),  # x-axis title
+    axis.title.y = element_text(size = 20, color = "black"),  # y-axis title
+    axis.text.x  = element_text(size = 18, color = "black"),  # x tick labels
+    axis.text.y  = element_text(size = 18, color = "black"),
+    legend.position = "none"
+  )
+
+label_size <- 5.5
+
+fig_S7B <- ggplot(
+  BEAN_FUSE_FL,
+  aes(x = `LDLR-FL FUSE_score normalized`, y = `Tabet LDL uptake score`, color = `is_cysteine`)
+) +
+  geom_point(size = 2, alpha = 0.7, shape = 16) +
+  scale_color_manual(values = c(`TRUE` = "black", `FALSE` = "black")) +
+
+  # Blue highlighted points
+  geom_point(
+    data = splicing_tabet_615,
+    aes(x = `LDLR-FL FUSE_score normalized`, y = `Tabet LDL uptake score`),
+    inherit.aes = FALSE,
+    shape = 1, size = 3, stroke = 1.2, color = "#181CED"
+  ) +
+  scale_x_continuous(
+    breaks = seq(-0.5, 1.5, by = 0.5)  # force 0, 0.5, 1.0, 1.5
+  ) +
+
+  # Labels for those blue highlighted points
+  geom_text_repel(
+    data = splicing_tabet_615,
+    aes(
+      x = `LDLR-FL FUSE_score normalized`,
+      y = `Tabet LDL uptake score`,
+      label = `Variant ID`
+    ),
+    inherit.aes = FALSE,
+    size = label_size,
+    color = "#181CED",
+    fontface = "bold"
+  ) +
+  
+  # Blue highlighted points
+  geom_point(
+    data = splicing_tabet_713,
+    aes(x = `LDLR-FL FUSE_score normalized`, y = `Tabet LDL uptake score`),
+    inherit.aes = FALSE,
+    shape = 1, size = 3, stroke = 1.2, color = "#86ED18"
+  ) +
+
+  # Labels for those blue highlighted points
+  geom_text_repel(
+    data = splicing_tabet_713,
+    aes(
+      x = `LDLR-FL FUSE_score normalized`,
+      y = `Tabet LDL uptake score`,
+      label = `Variant ID`
+    ),
+    inherit.aes = FALSE,
+    size = label_size,
+    color = "#86ED18",
+    fontface = "bold"
+  ) +
+  
+  
+  # Blue highlighted points
+  geom_point(
+    data = splicing_tabet_770,
+    aes(x = `LDLR-FL FUSE_score normalized`, y = `Tabet LDL uptake score`),
+    inherit.aes = FALSE,
+    shape = 1, size = 3, stroke = 1.2, color = "#ED7F18"
+  ) +
+
+  # Labels for those blue highlighted points
+  geom_text_repel(
+    data = splicing_tabet_770,
+    aes(
+      x = `LDLR-FL FUSE_score normalized`,
+      y = `Tabet LDL uptake score`,
+      label = `Variant ID`
+    ),
+    inherit.aes = FALSE,
+    size = label_size,
+    color = "#ED7F18",
+    fontface = "bold"
+  ) +
+  labs(
+    x = "LDLR-FL FUSE_score normalized score",
+    y = "Tabet et al. LDL uptake score"
+  ) +
+  base_theme
+
+#print out figure panel
+fig_S7B
+
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_S7"), "FigS7B.pdf"),
+  plot     = fig_S7B,
+  width    = 8,
+  height   = 8,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r fig_S7C}
+# Add cysteine flag
+BEAN_FUSE_FL <- BEAN_FUSE_FL %>%
+  mutate(is_cysteine = `Starting AA` == "C")
+
+splicing_tabet_615 <- BEAN_FUSE_FL %>%
+  filter(`Variant ID` %in% splicing_variants_615)
+
+splicing_tabet_713 <- BEAN_FUSE_FL %>%
+  filter(`Variant ID` %in% splicing_variants_713)
+
+splicing_tabet_770 <- BEAN_FUSE_FL %>%
+  filter(`Variant ID` %in% splicing_variants_770)
+
+fig_S7C <- ggplot(
+  BEAN_FUSE_FL,
+  aes(x = `LDLR-FL FUSE_score normalized`, y = AlphaMissense, color = is_cysteine)
+) +
+  geom_point(size = 2, alpha = 0.7, shape = 16) +
+  scale_color_manual(values = c(`TRUE` = "black", `FALSE` = "black")) +
+  scale_x_continuous(
+    breaks = seq(-0.5, 1.5, by = 0.5)  # force 0, 0.5, 1.0, 1.5
+  ) +
+  geom_point(
+    data = splicing_tabet_615,
+    aes(x = `LDLR-FL FUSE_score normalized`, y = AlphaMissense),
+    inherit.aes = FALSE,
+    shape = 1, size = 3, stroke = 1.2, color = "#181CED"
+  ) +
+  geom_text_repel(
+    data = splicing_tabet_615,
+    aes(x = `LDLR-FL FUSE_score normalized`, y = AlphaMissense, label = `Variant ID`),
+    inherit.aes = FALSE,
+    size = label_size, color = "#181CED", fontface = "bold"
+  ) +
+
+  geom_point(
+    data = splicing_tabet_713,
+    aes(x = `LDLR-FL FUSE_score normalized`, y = AlphaMissense),
+    inherit.aes = FALSE,
+    shape = 1, size = 3, stroke = 1.2, color = "#86ED18"
+  ) +
+  geom_text_repel(
+    data = splicing_tabet_713,
+    aes(x = `LDLR-FL FUSE_score normalized`, y = AlphaMissense, label = `Variant ID`),
+    inherit.aes = FALSE,
+    size = label_size, color = "#86ED18", fontface = "bold"
+  ) +
+
+  geom_point(
+    data = splicing_tabet_770,
+    aes(x = `LDLR-FL FUSE_score normalized`, y = AlphaMissense),
+    inherit.aes = FALSE,
+    shape = 1, size = 3, stroke = 1.2, color = "#ED7F18"
+  ) +
+  geom_text_repel(
+    data = splicing_tabet_770,
+    aes(x = `LDLR-FL FUSE_score normalized`, y = AlphaMissense, label = `Variant ID`),
+    inherit.aes = FALSE,
+    size = label_size, color = "#ED7F18", fontface = "bold"
+  ) +
+  labs(
+    x = "LDLR-FL FUSE score",
+    y = "AlphaMissense"
+  ) +
+  base_theme
+
+#print out figure panel
+fig_S7C
+
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_S7"), "FigS7C.pdf"),
+  plot     = fig_S7C,
+  width    = 8,
+  height   = 8,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r printing_fig}
+fig_S7 <- fig_S7A | fig_S7B | fig_S7C
+
+ggsave(
+  filename = file.path(here("output", "figure_S7"), "FigS7.pdf"),
+  plot     = fig_S7,
+  width    = 21,
+  height   = 7,
+  units    = "in",
+  create.dir = TRUE,
+  dpi = 600
+)
+```
+

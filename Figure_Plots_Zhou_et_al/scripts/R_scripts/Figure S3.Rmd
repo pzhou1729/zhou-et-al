@@ -1,0 +1,448 @@
+---
+title: "Figure S3"
+author: "Phil Zhou"
+date: "2025-11-18"
+output: html_document
+---
+
+```{r load_packages}
+library(svglite)
+library(readr)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(ggrepel)
+library(readxl)
+library(tidyverse)
+library(pheatmap)
+library(viridis)
+library(gplots)
+library(zoo)
+library(patchwork)
+library(corrplot)
+library(ggpubr)
+library(tidyr)
+library(here)
+```
+
+```{r load_dfs}
+#FigS3_LDLR-FL RPM table
+LDLR_FL_RPM_table <- read.csv(here("data", "LDLR_FL", "FigS3_LDLR-FL RPM table.csv"))
+
+#FigS3_LDLR137vsFL_BEANmuZ
+LDLR137vsFL_BEANmuZ <- read.csv(here("data", "LDLR_FL", "FigS3_LDLR137vsFL_BEANmuZ.csv"))
+
+#FigS3_LDLR137vsFL_FUSE
+LDLR137vsFL_FUSE <- read.csv(here("data", "LDLR_FL", "FigS3_LDLR137vsFL_FUSE.csv"))
+
+#FigS3_Indel_analysis
+indel_analysis <- read.delim(here("data", "LDLR_FL", "FigS3_Indel_analysis.csv"))
+
+#FigS3_LDLR137muZ
+LDLR137vsFL_muZ_sig <- read.csv(here("data", "LDLR_FL", "FigS3_LDLR137muZ.csv"))
+
+BEAN_FUSE_FL <- read_csv(
+  here("data", "0326_LDLR_mastersheet.csv")
+)
+```
+
+```{r fig_S3B}
+#FigS3_LDLR-FL RPM table
+LDLR_FL_RPM_table <- LDLR_FL_RPM_table %>% select(-"X")
+
+M = cor(LDLR_FL_RPM_table, use = "pairwise.complete.obs", method = "spearman")
+
+LDLR_FL_RPM_table_corrplot <- corrplot(M, method = 'color', col.lim = c(-1,1),
+         col = COL2('RdBu'), cl.pos = 'b', addCoef.col = 'white', tl.col = "black")
+
+colnames(M) <- c("Replicate 1 Bulk", "Replicate 1 Top 20%", "Replicate 1 Top 40%", "Replicate 1 Bottom 20%", "Replicate 1 Bottom 40%", "Replicate 2 Bulk", "Replicate 2 Top 20%", "Replicate 2 Top 40%", "Replicate 2 Bottom 20%", "Replicate 2 Bottom 40%", "Replicate 3 Bulk", "Replicate 3 Top 20%", "Replicate 3 Top 40%", "Replicate 3 Bottom 20%", "Replicate 3 Bottom 40%", "Replicate 4 Bulk", "Replicate 4 Top 20%", "Replicate 4 Top 40%", "Replicate 4 Bottom 20%", "Replicate 4 Bottom 40%")
+
+rownames(M) <- c("Replicate 1 Bulk", "Replicate 1 Top 20%", "Replicate 1 Top 40%", "Replicate 1 Bottom 20%", "Replicate 1 Bottom 40%", "Replicate 2 Bulk", "Replicate 2 Top 20%", "Replicate 2 Top 40%", "Replicate 2 Bottom 20%", "Replicate 2 Bottom 40%", "Replicate 3 Bulk", "Replicate 3 Top 20%", "Replicate 3 Top 40%", "Replicate 3 Bottom 20%", "Replicate 3 Bottom 40%", "Replicate 4 Bulk", "Replicate 4 Top 20%", "Replicate 4 Top 40%", "Replicate 4 Bottom 20%", "Replicate 4 Bottom 40%")
+
+fig_S3B <- corrplot(M, method = 'color', col.lim = c(-1,1),
+         col = COL2('RdBu'), cl.pos = 'b', addCoef.col = 'white', tl.col = "black")
+```
+
+```{r fig_S3C}
+# ---- 1) Classic panel theme ----
+panel_theme <- theme_classic() +
+  theme(
+    legend.position = "none",
+    plot.margin = margin(6, 6, 6, 6),
+    axis.title.x = element_text(size = 18, color = "black"),
+    axis.title.y = element_text(size = 18, color = "black"),
+    axis.text.x  = element_text(size = 16, color = "black"),
+    axis.text.y  = element_text(size = 16, color = "black")
+  )
+
+df <- indel_analysis %>%
+  mutate(
+    Outcome = factor(Outcome, levels = c("Edited", "Unedited", "Indel")),
+    Fraction = as.numeric(Fraction)
+  )
+
+# ---- 2) Plot ----
+fig_S3C <- ggplot(df, aes(x = Outcome, y = Fraction)) +
+  
+  stat_summary(
+    aes(fill=Outcome),
+    fun = mean,
+    geom = "bar",
+    color = "black",
+    width = 0.6
+  ) +
+  
+  geom_jitter(
+    width = 0.05,
+    size = 3
+  ) +
+  
+  stat_summary(
+    fun = mean,
+    geom = "text",
+    aes(label = sprintf("%.3f", after_stat(y))),
+    vjust = -0.5,
+    size = 5
+  ) +
+  
+  scale_y_continuous(
+    limits = c(0, 0.8),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  
+  labs(
+    x = NULL,
+    y = "Fraction of reporter outcomes"
+  ) +
+  
+  panel_theme +
+  
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+#Printing out figure panel 
+fig_S3C
+
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_S3"), "FigS3C.pdf"),
+  plot     = fig_S3C,
+  width    = 6,
+  height   = 6,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r fig_S3D}
+
+# Use your panel_theme if it exists, otherwise fallback to theme_classic()
+theme_to_use <- if (exists("panel_theme")) panel_theme else theme_classic()
+
+fig_S3D <- ggplot(BEAN_FUSE_FL,
+              aes(x = `LDLR137-219 BEAN mu_Z`,
+                  y = `LDLR-FL BEAN_score normalized`,
+                  color = "black")) +
+  geom_point(shape = 16, alpha = 0.4, size = 2, color = "black") + theme_classic() +
+  labs(
+    y = "LDLR-FL BEAN z score",
+    x = "Endogenous LDLR137-219 BEAN z score",
+    color = NULL
+  ) +   theme_to_use + theme(
+    axis.title.x = element_text(size = 20, color = "black"),  # x-axis title
+    axis.title.y = element_text(size = 20, color = "black"),  # y-axis title
+    axis.text.x  = element_text(size = 18, color = "black"),  # x tick labels
+    axis.text.y  = element_text(size = 18, color = "black")
+  ) + coord_equal()
+
+#Printing out figure panel 
+fig_S3D
+
+#5193+500 - 5237 = 456 data points 
+
+# ---- Calculating correlations for Figure S3D ----
+cor(BEAN_FUSE_FL$`LDLR137-219 BEAN mu_Z`, BEAN_FUSE_FL$`LDLR-FL BEAN_score normalized`, method = "pearson", "complete.obs")
+cor(BEAN_FUSE_FL$`LDLR137-219 BEAN mu_Z`, BEAN_FUSE_FL$`LDLR-FL BEAN_score normalized`, method = "spearman", "complete.obs")
+
+ sum(!is.na(BEAN_FUSE_FL$`LDLR-FL BEAN_score normalized`) &
+    !is.na(BEAN_FUSE_FL$`LDLR137-219 BEAN mu_Z`))
+ 
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_S3"), "FigS3D.pdf"),
+  plot     = fig_S3D,
+  width    = 6,
+  height   = 6,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r fig_S3E}
+fig_S3E <- ggplot(BEAN_FUSE_FL,
+              aes(x = `LDLR137-219 FUSE_score normalized`,
+                  y = `LDLR-FL FUSE_score normalized`,
+                  color = "black")) +
+  geom_point(shape = 16, alpha = 0.4, size = 2, color = "black") + theme_classic() +
+  labs(
+    y = "LDLR-FL FUSE score",
+    x = "Endogenous LDLR137-219 FUSE score",
+    color = NULL
+  ) + theme_to_use + theme(
+    axis.title.x = element_text(size = 20, color = "black"),  # x-axis title
+    axis.title.y = element_text(size = 20, color = "black"),  # y-axis title
+    axis.text.x  = element_text(size = 18, color = "black"),  # x tick labels
+    axis.text.y  = element_text(size = 18, color = "black")
+  ) + coord_equal()
+
+#Printing out figure panel 
+fig_S3E
+
+#16321-15926
+
+# ---- Calculating correlations for Figure S3E ----
+cor(BEAN_FUSE_FL$`LDLR-FL FUSE_score normalized`, BEAN_FUSE_FL$`LDLR137-219 FUSE_score normalized`, method = "pearson", "complete.obs")
+cor(BEAN_FUSE_FL$`LDLR-FL FUSE_score normalized`, BEAN_FUSE_FL$`LDLR137-219 FUSE_score normalized`, method = "spearman", "complete.obs")
+
+ sum(!is.na(BEAN_FUSE_FL$`LDLR-FL FUSE_score normalized`) &
+    !is.na(BEAN_FUSE_FL$`LDLR137-219 FUSE_score normalized`))
+
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_S3"), "FigS3E.pdf"),
+  plot     = fig_S3E,
+  width    = 6,
+  height   = 6,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r fig_S3F}
+#Filter out all points where |z| <= 1.96
+df_filtered <- BEAN_FUSE_FL %>%
+  dplyr::filter(abs(`LDLR137-219 BEAN mu_Z`) > 1.96)
+
+fig_S3F <- ggplot(df_filtered,
+              aes(x = `LDLR137-219 BEAN mu_Z`,
+                  y = `LDLR-FL BEAN_score normalized`,
+                  color = "black")) +
+  geom_point(shape = 16, alpha = 0.4, size = 2, color = "black") +
+  theme_classic() +
+  labs(
+    y = "LDLR-FL BEAN z score",
+    x = "Endogenous LDLR137-219 BEAN z score",
+    color = NULL
+  ) +
+  theme_to_use +
+  theme(
+    axis.title.x = element_text(size = 20, color = "black"),
+    axis.title.y = element_text(size = 20, color = "black"),
+    axis.text.x  = element_text(size = 18, color = "black"),
+    axis.text.y  = element_text(size = 18, color = "black")
+  ) +
+  coord_equal()
+
+#Printing out figure panel 
+fig_S3F
+
+cor(df_filtered$`LDLR137-219 BEAN mu_Z`,
+    df_filtered$`LDLR-FL BEAN_score normalized`,
+    method = "pearson",
+    use = "complete.obs")
+
+cor(df_filtered$`LDLR137-219 BEAN mu_Z`,
+    df_filtered$`LDLR-FL BEAN_score normalized`,
+    method = "spearman",
+    use = "complete.obs")
+
+# ---- Calculating correlations for Figure S3F ----
+sum(!is.na(df_filtered$`LDLR-FL BEAN_score normalized`) &
+    !is.na(df_filtered$`LDLR137-219 BEAN mu_Z`))
+
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_S3"), "FigS3F.pdf"),
+  plot     = fig_S3F,
+  width    = 6,
+  height   = 6,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r fig_S3F_alt (UNUSED)}
+#Filter out all points where |z| <= 1.96 using LDLR-FL (NOT USED IN PAPER)
+df_filtered <- BEAN_FUSE_FL %>%
+  dplyr::filter(abs(`LDLR-FL BEAN_score normalized`) > 1.96)
+
+fig_S3F_alt <- ggplot(df_filtered,
+              aes(x = `LDLR137-219 BEAN mu_Z`,
+                  y = `LDLR-FL BEAN_score normalized`,
+                  color = "black")) +
+  geom_point(shape = 16, alpha = 0.4, size = 2, color = "black") +
+  theme_classic() +
+  labs(
+    y = "LDLR-FL BEAN z score",
+    x = "Endogenous LDLR137-219 BEAN z score",
+    color = NULL
+  ) +
+  theme_to_use +
+  theme(
+    axis.title.x = element_text(size = 20, color = "black"),
+    axis.title.y = element_text(size = 20, color = "black"),
+    axis.text.x  = element_text(size = 18, color = "black"),
+    axis.text.y  = element_text(size = 18, color = "black")
+  ) +
+  coord_equal()
+
+#Printing out figure panel 
+fig_S3F_alt
+
+cor(df_filtered$`LDLR137-219 BEAN mu_Z`,
+    df_filtered$`LDLR-FL BEAN_score normalized`,
+    method = "pearson",
+    use = "complete.obs")
+
+cor(df_filtered$`LDLR137-219 BEAN mu_Z`,
+    df_filtered$`LDLR-FL BEAN_score normalized`,
+    method = "spearman",
+    use = "complete.obs")
+
+sum(!is.na(df_filtered$`LDLR-FL BEAN_score normalized`) &
+    !is.na(df_filtered$`LDLR137-219 BEAN mu_Z`))
+```
+
+
+```{r fig_S3G}
+#FigS3_LDLRFL BEAN vs PFAM
+BEAN_FUSE_FL
+
+# Use your panel_theme if it exists, otherwise fallback to theme_classic()
+theme_to_use <- if (exists("panel_theme")) panel_theme else theme_classic()
+
+# Clean + annotate
+fig_3G_clean <- BEAN_FUSE_FL %>%
+  mutate(
+    is_cysteine = `Starting AA` == "C",
+    Variant_name = paste0(
+      `Starting AA`,
+      `Position`,
+      `Final AA`
+    )
+  )
+
+# Plot (cysteines in red, others black)
+fig_S3G <- ggplot(
+  fig_3G_clean,
+  aes(x = `LDLR-FL BEAN_score normalized`, y = `Differential PFAM`, color = is_cysteine)
+) +
+  geom_point(size = 2, alpha = 0.7, shape = 16) +
+  scale_color_manual(values = c(`TRUE` = "red", `FALSE` = "black")) +
+  labs(
+    y = "Differential PFAM",
+    x = "LDLR-FL BEAN z score",
+    color = NULL
+  ) +
+  theme_to_use +
+  theme(
+    axis.title.x = element_text(size = 20, color = "black"),
+    axis.title.y = element_text(size = 20, color = "black"),
+    axis.text.x  = element_text(size = 18, color = "black"),
+    axis.text.y  = element_text(size = 18, color = "black")
+  )
+
+#print out figure panel
+fig_S3G
+
+#16321-15029
+
+# ---- Calculating correlations for Figure S3G ----
+cor(BEAN_FUSE_FL$`LDLR-FL BEAN_score normalized`, BEAN_FUSE_FL$`Differential PFAM`, method = "pearson", "complete.obs")
+cor(BEAN_FUSE_FL$`LDLR-FL BEAN_score normalized`, BEAN_FUSE_FL$`Differential PFAM`, method = "spearman", "complete.obs")
+
+ sum(!is.na(BEAN_FUSE_FL$`LDLR-FL BEAN_score normalized`) &
+    !is.na(BEAN_FUSE_FL$`Differential PFAM`))
+ 
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_S3"), "FigS3G.pdf"),
+  plot     = fig_S3G,
+  width    = 6,
+  height   = 4,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r fig_S3H}
+#FigS3_LDLRFL BEAN vs AM
+BEAN_FUSE_FL
+
+# Clean + annotate
+fig_3H_clean <- BEAN_FUSE_FL %>%
+  mutate(
+    is_cysteine = `Starting AA` == "C",
+    Variant_name = paste0(
+      `Starting AA`,
+      `Position`,
+      `Final AA`
+    )
+  )
+
+# Plot (cysteines in red, others black)
+fig_S3H <- ggplot(
+  fig_3H_clean,
+  aes(x = `LDLR-FL BEAN_score normalized`, y = `AlphaMissense`, color = is_cysteine)
+) +
+  geom_point(size = 2, alpha = 0.7, shape = 16) +
+  scale_color_manual(values = c(`TRUE` = "red", `FALSE` = "black")) +
+  labs(
+    y = "AlphaMissense",
+    x = "LDLR-FL BEAN z score",
+    color = NULL
+  ) +
+  theme_to_use +
+  theme(
+    axis.title.x = element_text(size = 20, color = "black"),
+    axis.title.y = element_text(size = 20, color = "black"),
+    axis.text.x  = element_text(size = 18, color = "black"),
+    axis.text.y  = element_text(size = 18, color = "black")
+  )
+
+#print out figure panel
+fig_S3H
+
+#16321-12262
+# ---- Calculating correlations for Figure S3H ----
+cor(BEAN_FUSE_FL$`LDLR-FL BEAN_score normalized`, BEAN_FUSE_FL$`AlphaMissense`, method = "pearson", "complete.obs")
+cor(BEAN_FUSE_FL$`LDLR-FL BEAN_score normalized`, BEAN_FUSE_FL$`AlphaMissense`, method = "spearman", "complete.obs")
+
+ sum(!is.na(BEAN_FUSE_FL$`LDLR-FL BEAN_score normalized`) &
+    !is.na(BEAN_FUSE_FL$`AlphaMissense`))
+ 
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_S3"), "FigS3H.pdf"),
+  plot     = fig_S3H,
+  width    = 6,
+  height   = 4,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r printing_fig S3CDEFGH}
+fig_S3CDEFGH <- (fig_S3C + fig_S3D + fig_S3E + plot_layout(widths = c(2, 2, 2))) / (fig_S3F + fig_S3G + fig_S3H+ plot_layout(widths = c(2, 2, 2)))
+
+ggsave(
+  filename = file.path(here("output", "figure_S3"), "FigS3CDEFGH.pdf"),
+  plot     = fig_S3CDEFGH,
+  width    = 20,
+  height   = 10,
+  units    = "in",
+  create.dir = TRUE,
+  dpi = 600
+)
+```

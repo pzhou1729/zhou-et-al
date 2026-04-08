@@ -1,0 +1,78 @@
+---
+title: "Figure 6"
+author: "Phil Zhou"
+date: "2025-11-16"
+output: html_document
+---
+
+```{r load_packages}
+library(svglite)
+library(readr)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(ggrepel)
+library(readxl)
+library(tidyverse)
+library(pheatmap)
+library(viridis)
+library(gplots)
+library(zoo)
+library(patchwork)
+library(corrplot)
+library(ggpubr)
+library(tidyr)
+library(here)
+```
+
+```{r load_dfs}
+#Figure 6C
+BEAN_FUSE_FL <- read_csv(
+  here("data", "0326_LDLR_mastersheet.csv")
+)
+```
+
+```{r fig_6C}
+plot_BEAN_pos <- function(pos) {
+  df_pos <- BEAN_FUSE_FL %>%
+    filter(Position == pos) %>%
+    filter(!is.na(`LDLR137-219 BEAN mu_Z`))   # remove variants with no value
+
+# ---- Plotting Figure 6C ----
+  ggplot(
+    df_pos,
+    aes(
+      x = reorder(`Final AA`, `LDLR137-219 BEAN mu_Z`),
+      y = `LDLR137-219 BEAN mu_Z`
+    )
+  ) +
+    geom_point(size = 3, color = "black") +
+    labs(
+      x = NULL,
+      y = "Endogenous LDLR137-219 BEAN z score"
+    ) +
+    theme_classic() +
+    theme(
+      axis.text.x = element_text(hjust = 1, size = 12),
+      axis.title  = element_text(size = 14),
+      plot.title  = element_text(size = 16, face = "bold")
+    ) 
+}
+
+p_213 <- plot_BEAN_pos(213)
+p_219 <- plot_BEAN_pos(219)
+
+fig_6C <- p_213 | p_219
+fig_6C
+
+
+ggsave(
+  filename = file.path(here("output", "figure_6"), "Fig6C.pdf"),
+  plot     = fig_6C,
+  width    = 16,
+  height   = 5,
+  units    = "in",
+  dpi = 600
+)
+```
+

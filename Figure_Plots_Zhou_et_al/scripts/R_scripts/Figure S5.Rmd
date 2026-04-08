@@ -1,0 +1,218 @@
+---
+title: "Figure S5"
+author: "Phil Zhou"
+date: "2025-11-18"
+output: html_document
+---
+
+```{r load_packages}
+library(svglite)
+library(readr)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(ggrepel)
+library(readxl)
+library(tidyverse)
+library(pheatmap)
+library(viridis)
+library(gplots)
+library(zoo)
+library(patchwork)
+library(corrplot)
+library(ggpubr)
+library(tidyr)
+library(here)
+```
+
+```{r load_dfs}
+#Load in the data
+BEAN_FUSE_FL <- read_csv(
+  here("data", "0326_LDLR_mastersheet.csv")
+)
+
+ddmut_LDLR <- read_csv(here("data", "LDLR_structural_analysis", "11_19_25_ddmut_LDLR.csv"))
+
+ddmut_ppi_LDLR_APOB <- read_csv(here("data", "LDLR_structural_analysis", "11_19_25_ddmut_ppi_LDLR_APOB.csv"))
+
+effect_foldx <- read_csv(here("data", "LDLR_structural_analysis", "11_19_25_FoldX_BEAN.csv"))
+```
+
+```{r shared_theme}
+panel_theme <- theme_classic() +
+  theme(
+    axis.title.x = element_text(size = 18, color = "black"),
+    axis.title.y = element_text(size = 18, color = "black"),
+    axis.text.x  = element_text(size = 16, color = "black"),
+    axis.text.y  = element_text(size = 16, color = "black")
+  )
+```
+
+```{r fig_S5A}
+df <- BEAN_FUSE_FL %>%
+  inner_join(ddmut_LDLR, by = "Variant ID") %>%
+  mutate(DDMut_prediction = prediction * -1)
+
+to_highlight <- c("G219D","S213L","K223E","D221Y","D224H")
+
+hl <- df %>%
+  mutate(var_norm = toupper(gsub("^LDLR[_-]?|^p\\.", "", `Variant ID`))) %>%
+  filter(var_norm %in% toupper(to_highlight))
+
+fig_S5A <- ggplot(df, aes(x = `LDLR-FL BEAN_score normalized`,
+               y = `DDMut_prediction`)) +
+  geom_point(size = 2, alpha = 0.7, shape = 16) +
+  geom_point(data = hl, aes(x = `LDLR-FL BEAN_score normalized`,
+                            y = `DDMut_prediction`),
+             shape = 21, fill = NA, color = "black", size = 3, stroke = 1) +
+  geom_text_repel(data = hl,
+                  aes(label = `Variant ID`),
+                  max.overlaps = Inf, box.padding = 0.5, point.padding = 0.3) +
+  labs(x = "LDLR-FL BEAN z score", y = "Predicted ΔΔG") +
+    geom_hline(yintercept = 0,
+             linetype = "dashed",
+             color = "black",
+             linewidth = 0.6) + 
+  panel_theme
+
+
+cor(df$`LDLR-FL BEAN_score normalized`, df$`DDMut_prediction`, method = "pearson", "complete.obs")
+cor(df$`LDLR-FL BEAN_score normalized`, df$`DDMut_prediction`, method = "spearman", "complete.obs")
+
+#12103-9047 = 3056
+
+#print out figure panel
+fig_S5A
+
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_S5"), "FigS5A.pdf"),
+  plot     = fig_S5A,
+  width    = 8,
+  height   = 5,
+  units    = "in",
+  create.dir = TRUE,
+  dpi = 600
+)
+
+ sum(!is.na(df$`LDLR-FL BEAN_score normalized`) &
+    !is.na(df$`DDMut_prediction`))
+```
+
+```{r fig_S5B}
+df_foldx <- inner_join(
+  BEAN_FUSE_FL,
+  effect_foldx,
+  by = c("Variant ID" = "Variant name")  # adjust if needed
+)
+
+# sanity check code
+to_highlight <- c("G219D","S213L","K223E","D221Y","D224H")
+
+hl <- df_foldx %>%
+  mutate(var_norm = toupper(`Variant ID`)) %>%
+  filter(var_norm %in% toupper(to_highlight))
+
+#Mu_z_adj vs. FoldX extracellular LDLR
+fig_S5B <- ggplot(df_foldx, aes(y = `total energy`,
+               x = `LDLR-FL BEAN_score normalized`)) +
+  geom_point(alpha = 0.7, size = 2, shape = 16) +
+  geom_point(data = hl, aes(y = `total energy`,
+                            x = `LDLR-FL BEAN_score normalized`),
+             shape = 21, fill = NA, color = "black", size = 3, stroke = 1) +
+  geom_text_repel(data = hl,
+                  aes(label = `Variant ID`),
+                  max.overlaps = Inf, box.padding = 0.5, point.padding = 0.3) +
+  geom_hline(yintercept = 0,
+             linetype = "dashed",
+             color = "black",
+             linewidth = 0.6) + 
+  labs(y = "Predicted ΔΔG", x = "LDLR-FL BEAN z score") +
+  panel_theme
+
+cor(df_foldx$`LDLR-FL BEAN_score normalized`, df_foldx$`total energy`, method = "pearson", "complete.obs")
+cor(df_foldx$`LDLR-FL BEAN_score normalized`, df_foldx$`total energy`, method = "spearman", "complete.obs")
+
+#print out figure panel
+fig_S5B
+
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_S5"), "FigS5B.pdf"),
+  plot     = fig_S5B,
+  width    = 8,
+  height   = 5,
+  units    = "in",
+  create.dir = TRUE,
+  dpi = 600
+)
+
+ sum(!is.na(df_foldx$`LDLR-FL BEAN_score normalized`) &
+    !is.na(df_foldx$`total energy`))
+
+```
+
+```{r fig_S5C}
+df <- BEAN_FUSE_FL %>%
+  inner_join(ddmut_ppi_LDLR_APOB, by = "Variant ID") %>%
+  mutate(DDMut_PPI_prediction = -`ddmut.ppi.forward.prediction`)
+
+to_highlight <- c("G219D","S213L","K223E","D221Y","D224H")
+
+hl <- df %>%
+  mutate(var_norm = toupper(gsub("^LDLR[_-]?|^p\\.", "", `Variant ID`))) %>%
+  filter(var_norm %in% toupper(to_highlight))
+
+fig_S5C <- ggplot(df, aes(y = `DDMut_PPI_prediction`,
+               x = `LDLR-FL BEAN_score normalized`)) +
+  geom_point(alpha = 0.7, size = 2, shape=16) +
+  geom_point(data = hl, aes(y = `DDMut_PPI_prediction`,
+                            x = `LDLR-FL BEAN_score normalized`),
+             shape = 21, fill = NA, color = "black", size = 3, stroke = 1) +
+  geom_text_repel(data = hl,
+                  aes(label = `Variant ID`),
+                  max.overlaps = Inf, box.padding = 0.5, point.padding = 0.3) +
+  labs(y = "Predicted ΔΔG", x = "LDLR-FL BEAN z score") +
+  geom_hline(yintercept = 0,
+             linetype = "dashed",
+             color = "black",
+             linewidth = 0.6) + 
+  panel_theme
+
+cor(df$`LDLR-FL BEAN_score normalized`, df$`DDMut_PPI_prediction`, method = "pearson", "complete.obs")
+cor(df$`LDLR-FL BEAN_score normalized`, df$`DDMut_PPI_prediction`, method = "spearman", "complete.obs")
+
+#print out figure panel
+fig_S5C
+
+#5168-3842 = 1326
+
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_S5"), "FigS5C.pdf"),
+  plot     = fig_S5C,
+  width    = 8,
+  height   = 5,
+  units    = "in",
+  create.dir = TRUE,
+  dpi = 600
+)
+
+ sum(!is.na(df$`LDLR-FL BEAN_score normalized`) &
+    !is.na(df$`DDMut_PPI_prediction`))
+```
+
+```{r printing_fig}
+fig_S5 <- fig_S5A | fig_S5B | fig_S5C
+
+ggsave(
+  filename = file.path(here("output", "figure_S5"), "FigS5.pdf"),
+  plot     = fig_S5,
+  width    = 24,
+  height   = 5,
+  units    = "in",
+  create.dir = TRUE,
+  dpi = 600
+)
+```
+

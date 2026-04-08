@@ -1,0 +1,191 @@
+---
+title: "Figure 1"
+author: "Phil Zhou"
+date: "2025-11-16"
+output: html_document
+---
+
+```{r load_packages}
+library(svglite)
+library(readr)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(ggrepel)
+library(readxl)
+library(tidyverse)
+library(pheatmap)
+library(viridis)
+library(gplots)
+library(zoo)
+library(patchwork)
+library(corrplot)
+library(ggpubr)
+library(tidyr)
+library(here)
+```
+
+```{r load_dfs}
+#Load in the data
+#Figures 1A and 1B are schematics and are not rendered in this document.
+
+fig_1C_df <- read.csv(
+  here("data", "LDLR_Ex4", "Fig1C_Endo_and repo_overall_edit_fraction.csv")
+)
+
+fig_1D_df <- read.csv(
+  here("data", "LDLR_Ex4", "Fig1D_endo vs repo.csv")
+)
+
+fig_1E_df <- read.csv(
+  here("data", "LDLR_Ex4", "Fig1E_endo vs repo_edit.csv")
+)
+```
+
+```{r fig_1C}
+#convert the data frame into long form: one column titled "Construct, one column titled "Edit_fraction". 
+df_long <- fig_1C_df %>%
+  pivot_longer(
+    everything(),
+    names_to = "Construct",
+    values_to = "Edit_fraction"
+  )
+
+# helper function for mean ± SEM
+mean_se <- function(x) {
+  m  <- mean(x, na.rm = TRUE)
+  se <- sd(x, na.rm = TRUE) / sqrt(sum(!is.na(x)))
+  data.frame(y = m, ymin = m - se, ymax = m + se)
+}
+
+# ---- Plotting Figure 1C ----
+fig_1C <- ggplot(df_long, aes(x = Construct, y = Edit_fraction)) +
+  stat_summary(
+    fun = mean, # height of bar is mean of values
+    geom = "bar",
+    fill = "steelblue",
+    color = "black"
+  ) +
+  stat_summary(
+    fun.data = mean_se, # SEM error bars
+    geom = "errorbar",
+    width = 0.2
+  ) +
+  geom_jitter(width = 0.15, size = 2, alpha = 0.8) +
+  labs(
+    x = NULL,
+    y = "Edit Fraction"
+  ) +
+  theme_classic() +
+  theme(
+    axis.text.x  = element_text(size = 18, color = "black"),
+    axis.text.y  = element_text(size = 18),
+    axis.title.y = element_text(size = 20)
+  )
+
+#print out figure panel
+fig_1C
+
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_1"), "Fig1C.pdf"),
+  plot     = fig_1C,
+  width    = 5,
+  height   = 5,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r fig_1D}
+# ---- Plotting Figure 1D ----
+fig_1D <- ggplot(fig_1D_df, aes(x = Mean.endogenous.RPM, y = Mean.Reporter.RPM)) +
+  geom_point(size = 2, alpha = 0.7, shape = 16) +
+  theme_classic() +
+  labs(y = "Mean pegRNA RPM", x = "Mean endogenous edit RPM") +
+  theme(
+    axis.title.x = element_text(size = 20, color = "black"),  # x-axis title
+    axis.title.y = element_text(size = 20, color = "black"),  # y-axis title
+    axis.text.x  = element_text(size = 18, color = "black"),  # x tick labels
+    axis.text.y  = element_text(size = 18, color = "black")   # y tick labels
+  ) +
+  scale_x_continuous(limits = c(0, NA), expand = expansion(mult = c(0, 0.02))) +
+  scale_y_continuous(limits = c(0, NA), expand = expansion(mult = c(0, 0.02)))
+
+# ---- Calculating correlations for Figure 1D ----
+# Pearson correlation
+cor(
+  fig_1D_df$`Mean.endogenous.RPM`,
+  fig_1D_df$`Mean.Reporter.RPM`,
+  method = "pearson",
+  use = "pairwise.complete.obs"
+)
+
+# Spearman correlation
+cor(
+  fig_1D_df$`Mean.endogenous.RPM`,
+  fig_1D_df$`Mean.Reporter.RPM`,
+  method = "spearman",
+  use = "pairwise.complete.obs"
+)
+
+#print out figure panel
+fig_1D
+
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_1"), "Fig1D.pdf"),
+  plot     = fig_1D,
+  width    = 5,
+  height   = 5,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r fig_1E}
+# ---- Plotting Figure 1E ----
+fig_1E <- ggplot(fig_1E_df, aes(x = Mean.endogenous.RPM,
+                   y = Mean.Reporter.RPM.Mean.Reporter.Edit.fraction)) +
+  geom_point(size = 2, alpha = 0.7, shape = 16) +
+  theme_classic() +
+  labs(y = "Mean pegRNA RPM*edit fraction",
+       x = "Mean endogenous edit RPM") +
+  scale_x_continuous(limits = c(0, NA),
+                     expand = expansion(mult = c(0, 0.02))) +  # right padding
+  scale_y_continuous(expand = expansion(mult = 0.02)) +       # top padding
+  theme(
+    axis.title.x = element_text(size = 20, color = "black"),  # x-axis title
+    axis.title.y = element_text(size = 20, color = "black"),  # y-axis title
+    axis.text.x  = element_text(size = 18, color = "black"),  # x tick labels
+    axis.text.y  = element_text(size = 18, color = "black")   # y tick labels
+  )
+
+#print out figure panel
+fig_1E
+
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_1"), "Fig1E.pdf"),
+  plot     = fig_1E,
+  width    = 5,
+  height   = 5,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r printing_fig_1CDE}
+#Combine the figure panels together side-by-side using patchwork
+fig_1CDE <- fig_1C | fig_1D | fig_1E
+
+#save the figure panel 1C + 1D + 1E as a high resolution .pdf
+ggsave(
+  filename = file.path(here("output", "figure_1"), "Fig1CDE.pdf"),
+  plot     = fig_1CDE,
+  width    = 16,
+  height   = 5,
+  units    = "in",
+  dpi = 600
+)
+```

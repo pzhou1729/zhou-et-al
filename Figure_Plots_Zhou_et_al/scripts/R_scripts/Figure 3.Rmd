@@ -1,0 +1,474 @@
+---
+title: "Figure 3"
+author: "Phil Zhou"
+date: "2025-11-16"
+output: html_document
+---
+
+```{r load_packages}
+library(svglite)
+library(readr)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(ggrepel)
+library(readxl)
+library(tidyverse)
+library(pheatmap)
+library(viridis)
+library(gplots)
+library(zoo)
+library(patchwork)
+library(corrplot)
+library(ggpubr)
+library(tidyr)
+library(here)
+```
+
+```{r load_dfs, warning=FALSE, message=FALSE}
+#Load in the data
+BEAN_FUSE_FL <- read_csv(
+  here("data", "0326_LDLR_mastersheet.csv")
+)
+
+#Figure 3A
+fig_3A_df <- read.csv(
+  here("data", "LDLR_FL", "Fig3A_editfrac.csv")
+)
+
+#Figure 3B
+fig_3B_df <- read_xlsx(
+  here("data", "LDLR_FL", "0125_HCT116_LDLRPE_datasum.xlsx")
+)
+
+#Figure 3C
+fig_3C_df <- read_xlsx(
+  here("data", "LDLR_FL", "0125_HCT116_LDLRPE_datasum.xlsx")
+)
+
+#Figure 3D
+fig_3D_df <- read_csv(
+  here("data", "LDLR_peDMS_full_data_040126.csv")
+)
+
+```
+
+```{r shared_theme}
+#Set up shared theme for generating scatterplots 
+panel_theme <- theme_classic() +
+  theme(
+    axis.line = element_blank(),
+    legend.position = "none",
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 0.8),
+    plot.margin = margin(6, 6, 6, 6),
+    axis.title.x = element_text(size = 18, color = "black"),
+    axis.title.y = element_text(size = 18, color = "black"),
+    axis.text.x  = element_text(size = 16, color = "black"),
+    axis.text.y  = element_text(size = 16, color = "black")
+  )
+```
+
+```{r fig_3A}
+# ---- Plotting Figure 3A ----
+fig_3A <- fig_3A_df %>%
+  mutate(BEAN_edit_percentage = BEAN.edit.fraction * 100) %>%
+  ggplot(aes(x = BEAN_edit_percentage)) +
+  geom_histogram(
+    binwidth = 2, boundary = 0,
+    color = "grey", fill = "black", linewidth = 0.3
+  ) +
+  labs(y = "Number of pegRNAs", x = "LDLR-FL reporter edit percentage") +
+  panel_theme +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05)))
+
+#Printing out figure panel 
+fig_3A
+
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_3"), "Fig3A.pdf"),
+  plot     = fig_3A,
+  width    = 6,
+  height   = 4,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r fig_3B}
+fig_3B_df <- fig_3B_df %>%
+  mutate(BEAN_edit_percentage = `BEAN edit fraction` * 100)
+
+# ---- Plotting Figure 3B ----
+fig_3B <- ggplot(fig_3B_df,
+    aes(
+      x = BEAN_edit_percentage,
+      y = `PRIDICT2_0_editing_Score_deep_HEK`,
+      color = RTlength
+    )
+  ) +
+  geom_point(shape = 16, alpha = 0.7, size = 2) +
+  scale_color_viridis_c() +
+  labs(
+    y = "PRIDICT2.0 score (HEK293T)",
+    x = "LDLR-FL reporter edit percentage",
+    color = "RT template length (nt)"
+  ) +
+  panel_theme +
+  theme(
+    legend.position = "right",
+    legend.margin = margin(r = 8)
+  )
+
+#Printing out figure panel 
+fig_3B
+
+# ---- Calculating correlations for Figure 3B ----
+# Pearson correlation
+cor(fig_3B_df$`BEAN_edit_percentage`, fig_3B_df$`PRIDICT2_0_editing_Score_deep_HEK`, method = "pearson", "complete.obs")
+# Spearman correlation
+cor(fig_3B_df$`BEAN_edit_percentage`, fig_3B_df$`PRIDICT2_0_editing_Score_deep_HEK`, method = "spearman", "complete.obs")
+
+#6004-309 = 5695
+
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_3"), "Fig3B.pdf"),
+  plot     = fig_3B,
+  width    = 6,
+  height   = 4,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r fig_3C}
+HCT116_LDLRPE_datasum <- fig_3B_df %>%
+  mutate(BEAN_edit_percentage = `BEAN edit fraction` * 100)
+
+sum_rt <- HCT116_LDLRPE_datasum %>%
+  group_by(RTlength) %>%
+  summarise(
+    n    = n(),
+    mean = mean(BEAN_edit_percentage, na.rm = TRUE),
+    sd   = sd(BEAN_edit_percentage,  na.rm = TRUE),
+    se   = sd / sqrt(n),
+    .groups = "drop"
+  )
+
+# ---- Plotting Figure 3C ----
+fig_3C <- ggplot(sum_rt, aes(x = RTlength, y = mean)) +
+  geom_errorbar(aes(ymin = mean - se, ymax = mean + se),
+                width = 0, linewidth = 0.6, color = "black") +
+  geom_point(size = 2.2, shape = 16, color = "black") +
+  scale_x_continuous(breaks = sort(unique(sum_rt$RTlength))) +
+  scale_y_continuous(limits = c(0, 100), expand = expansion(mult = c(0, 0.03))) +
+  labs(x = "pegRNA RT template length", y = "LDLR-FL reporter edit percentage") +
+  panel_theme +
+  theme(axis.text.x = element_text(size = 9))  # tighter ticks
+
+#Printing out figure panel 
+fig_3C
+
+# ---- Calculating correlations for Figure 3C ----
+# Pearson correlation
+cor(HCT116_LDLRPE_datasum$`BEAN_edit_percentage`, HCT116_LDLRPE_datasum$`RTlength`, method = "pearson", "complete.obs")
+# Spearman correlation
+cor(HCT116_LDLRPE_datasum$`BEAN_edit_percentage`, HCT116_LDLRPE_datasum$`RTlength`, method = "spearman", "complete.obs")
+
+#5696 entries 
+
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_3"), "Fig3C.pdf"),
+  plot     = fig_3C,
+  width    = 6,
+  height   = 6,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r fig_3D}
+# ---- statistical testing for Figure 3D ----
+comparisons_3d <- list(
+  c("Control",    "Synonymous"),
+  c("Synonymous", "Missense"),
+  c("Missense",   "Stop"),
+  c("Control",    "Missense"),
+  c("Synonymous", "Stop"),
+  c("Control",    "Stop")
+)
+
+fig_3D_long <- fig_3D_df %>%
+  select(Variant.type, raw_score_scaled_by_negCtrl) %>%
+  rename(
+    Variant = Variant.type,
+    Score   = raw_score_scaled_by_negCtrl
+  ) %>%
+  mutate(
+    Variant = factor(
+      Variant,
+      levels = c("negcontrol", "synonymous", "missense", "stop"),
+      labels = c("Control", "Synonymous", "Missense", "Stop")
+    )
+  ) %>%
+  filter(!is.na(Score), is.finite(Score))
+
+# Wilcoxon tests with Holm correction
+wilcox_test <- compare_means(
+  Score ~ Variant,
+  data = fig_3D_long,
+  method = "wilcox.test",
+  method.args = list(var.equal = FALSE),
+  comparisons = comparisons_3d,
+  p.adjust.method = "holm"
+)
+
+# Pairwise Welch t-tests with Holm correction
+t_test <- compare_means(
+  Score ~ Variant,
+  data = fig_3D_long,
+  method = "t.test",
+  method.args = list(var.equal = FALSE),
+  comparisons = comparisons_3d,
+  p.adjust.method = "holm"
+)
+
+# Dynamic y positions
+ymax   <- max(fig_3D_long$Score, na.rm = TRUE)
+ymin   <- min(fig_3D_long$Score, na.rm = TRUE)
+yrange <- ymax - ymin
+
+# If yrange is zero for some reason, avoid zero spacing
+if (yrange == 0) yrange <- 1
+
+t_test <- t_test %>%
+  mutate(
+    p.signif = case_when(
+      p.adj <= 0.0001 ~ "****",
+      p.adj <= 0.001  ~ "***",
+      p.adj <= 0.01   ~ "**",
+      p.adj <= 0.05   ~ "*",
+      TRUE            ~ "n.s."
+    ),
+    y.position = ymax + c(0.06, 0.14, 0.22, 0.30, 0.38, 0.46) * yrange
+  )
+
+# ---- Plotting Figure 3D ----
+fig_3D <- ggplot(fig_3D_long, aes(x = Variant, y = Score, fill = Variant)) +
+  geom_point( #Scatterplot
+    aes(color = Variant),
+    position = position_jitter(width = 0.05, height = 0),
+    size = 1.2, alpha = 0.5
+  ) +
+  geom_hline(
+    yintercept = 0,
+    linetype = "dotted",
+    color = "black",
+    linewidth = 0.6
+  ) +
+  geom_violin(alpha = 0.5, trim = FALSE) + #Violin plot
+  geom_boxplot( #Boxplot
+    width = 0.15,
+    outlier.shape = NA,
+    alpha = 0.7,
+    color = "black"
+  ) +
+  labs(x = NULL, y = "LDLR-FL BEAN z score") +
+  coord_cartesian(
+    ylim = c(ymin - 0.05 * yrange, ymax + 0.55 * yrange)
+  ) +
+  panel_theme +
+  theme(legend.position = "none") +
+  scale_fill_discrete(guide = "none") +
+  scale_color_discrete(guide = "none") +
+  stat_pvalue_manual(
+    t_test,
+    label = "p.signif",
+    xmin = "group1",
+    xmax = "group2",
+    y.position = "y.position",
+    inherit.aes = FALSE,
+    hide.ns = FALSE,
+    tip.length = 0.01,
+    size = 8,
+    bracket.size = 0.6,
+    color = "black"
+  )
+
+#Printing out figure panel 
+fig_3D
+
+#print out results of statistical test
+t_test
+wilcox_test
+
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_3"), "Fig3D.pdf"),
+  plot     = fig_3D,
+  width    = 6,
+  height   = 6,
+  units    = "in",
+  dpi = 600
+)
+```
+```{r fig_3E}
+#Add label for whether the starting amino acid is a cysteine or not
+#Variants corresponding to cysteine mutants are colored red
+
+  BEAN_FUSE_FL_clean <- BEAN_FUSE_FL %>%
+    filter(!is.na(`Differential PFAM`), `Differential PFAM` != 0) %>%
+    mutate(
+      is_cysteine = `Starting AA` == "C",
+      Variant_name = paste0(
+        `Starting AA`,
+        `Position`,
+        `Final AA`
+      )
+    )
+
+# ---- Plotting Figure 3E ----
+fig_3E <- ggplot(
+  BEAN_FUSE_FL_clean,
+  aes(x = `LDLR-FL FUSE_score normalized`, y = `Differential PFAM`, color = is_cysteine)
+) +
+  geom_point(size = 2, alpha = 0.7, shape = 16) +
+  scale_color_manual(
+  values = c(`TRUE` = "red", `FALSE` = "black"),
+  guide = "none"
+) +
+  scale_x_continuous(
+    breaks = seq(-0.5, 1.5, by = 0.5)  # force 0, 0.5, 1.0, 1.5
+  ) +
+theme(legend.position = "none") + 
+  geom_hline(yintercept = 0, linetype = "dotted", color = "black", linewidth = 0.6) +
+  labs(y = "Differential PFAM", x = "LDLR-FL FUSE score", color = NULL) +
+  panel_theme +                    # already has legend.position = "none"
+  theme(legend.position = "none")
+
+#4921-3629 = 1292
+#Recalculate correlations 
+
+# ---- Calculating correlations for Figure 3E ----
+cor(BEAN_FUSE_FL$`LDLR-FL FUSE_score normalized`, BEAN_FUSE_FL$`Differential PFAM`, method = "pearson", "complete.obs")
+cor(BEAN_FUSE_FL$`LDLR-FL FUSE_score normalized`, BEAN_FUSE_FL$`Differential PFAM`, method = "spearman", "complete.obs")
+
+#Printing out figure panel 
+fig_3E
+
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_3"), "Fig3E.pdf"),
+  plot     = fig_3E,
+  width    = 6,
+  height   = 4,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r fig_3F}
+#Add label for whether the starting amino acid is a cysteine or not
+#Variants corresponding to cysteine mutants are colored red
+
+fig_3F_clean <- BEAN_FUSE_FL %>%
+  filter(!is.na(AlphaMissense), !is.na(`LDLR-FL FUSE`)) %>%
+  mutate(
+    is_cysteine = `Starting AA` == "C",
+    Variant_name = paste0(
+      `Starting AA`,
+      `Position`,
+      `Final AA`
+    )
+  )
+
+# ---- Plotting Figure 3F ----
+fig_3F <- ggplot(
+  fig_3F_clean,
+  aes(x = `LDLR-FL FUSE_score normalized`, y = AlphaMissense, color = is_cysteine)
+) +
+  geom_point(size = 2, alpha = 0.7, shape = 16) +
+  scale_color_manual(
+  values = c(`TRUE` = "red", `FALSE` = "black"),
+  guide = "none"
+) +
+  scale_x_continuous(
+    breaks = seq(-0.5, 1.5, by = 0.5)  # force 0, 0.5, 1.0, 1.5
+  ) +
+  
+  labs(
+    y = "AlphaMissense score",
+    x = "LDLR-FL FUSE score",
+    color = NULL
+  ) +
+  panel_theme +               # use the same boxed theme
+  theme(legend.position = "none")   
+
+# ---- Calculating correlations for Figure 3F ----
+cor(BEAN_FUSE_FL$`LDLR-FL FUSE_score normalized`, BEAN_FUSE_FL$`AlphaMissense`, method = "pearson", "complete.obs")
+cor(BEAN_FUSE_FL$`LDLR-FL FUSE_score normalized`, BEAN_FUSE_FL$`AlphaMissense`, method = "spearman", "complete.obs")
+
+#Printing out figure panel 
+fig_3F
+
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_3"), "Fig3F.pdf"),
+  plot     = fig_3F,
+  width    = 6,
+  height   = 4,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r printing_fig, warning=FALSE, message=FALSE}
+# Consistent small per-panel margin to avoid clipping 
+panel_theme_boxed <- panel_theme + 
+  theme(
+    plot.margin = margin(4, 4, 4, 4),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 1),
+    axis.line = element_blank()
+  )
+
+# Apply to all panels (keeps borders aligned)
+fig_3A <- fig_3A + panel_theme_boxed
+fig_3B <- fig_3B + panel_theme_boxed + theme(legend.position = "right")  # legend shown here
+fig_3C <- fig_3C + panel_theme_boxed
+fig_3D <- fig_3D + panel_theme_boxed
+fig_3E <- fig_3E + panel_theme_boxed
+fig_3F <- fig_3F + panel_theme_boxed
+
+# Arrange 3×2 with gutters (A,B,C / D,E,F)
+hgap <- 0.08  # horizontal gutter (relative width of spacers)
+vgap <- 0.10  # vertical gutter (relative height of spacer row)
+
+row_top <- (fig_3A | plot_spacer() | fig_3B | plot_spacer() | fig_3C) +
+  plot_layout(widths = c(1, hgap, 1, hgap, 1))
+
+row_bot <- (fig_3D | plot_spacer() | fig_3E | plot_spacer() | fig_3F) +
+  plot_layout(widths = c(1, hgap, 1, hgap, 1))
+
+fig_3 <- row_top / plot_spacer() / row_bot +
+  plot_layout(heights = c(1, vgap, 1), guides = "collect") &   # collect legend globally
+  theme(
+    legend.position = "right",               # single legend on the figure right
+    legend.margin   = margin(6, 6, 6, 6),
+    plot.margin     = margin(8, 8, 8, 8),     # outer breathing room
+  )
+
+#Printing out figure panel 
+fig_3
+
+ggsave(
+  filename = file.path(here("output", "figure_3"), "Fig3.pdf"),
+  plot     = fig_3,
+  width    = 36,
+  height   = 12,
+  units    = "in",
+  create.dir = TRUE,
+  dpi = 600
+)
+```

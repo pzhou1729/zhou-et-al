@@ -1,0 +1,1036 @@
+---
+title: "Figure 5"
+author: "Phil Zhou"
+date: "2025-11-16"
+output: html_document
+---
+
+```{r load_packages}
+library(svglite)
+library(readr)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(ggrepel)
+library(readxl)
+library(janitor)
+library(tidyverse)
+library(pheatmap)
+library(viridis)
+library(gplots)
+library(cowplot)
+library(zoo)
+library(patchwork)
+library(corrplot)
+library(ggpubr)
+library(tidyr)
+library(rstatix)
+library(here)
+```
+
+```{r load_dfs}
+BEAN_FUSE_FL <- read_csv(
+  here("data", "0326_LDLR_mastersheet.csv")
+)
+
+domains <- read_tsv(
+  here("data", "LDLR_domains", "LDLR_domains.tsv")
+)
+
+LDLR_GOF <- read_xlsx(
+  here("data", "LDLR_domains", "LDLR_GOF_validation_final_8_16_25.xlsx")
+)
+
+LDLR_LOF <- read_xlsx(
+  here("data", "LDLR_domains", "LDLR_LOF_validation_final_8_16_25.xlsx")
+)
+
+LDLR_GOF_LOF <- read_xlsx(
+  here("data", "LDLR_domains", "LDLR_GOF+LOF_final_8_16_25.xlsx")
+)
+```
+
+```{r fig_5A}
+# ---- 1) Explicitly rename columns ----
+domains <- domains %>%
+  rename(
+    start  = `Domain AA start`,
+    end    = `Domain AA end`,
+    domain = `LDLR domain (Uniprot)`
+  )
+
+# ---- 2) Collapse to one value per residue ----
+#Note that we are plotting the per-residue FUSE score average instead of the FUSE score for every variant. 
+#Here we take the mean over each variant sharing a residue position. 
+df_residue <- BEAN_FUSE_FL %>%
+  select(Position, score = `LDLR-FL FUSE_score normalized`) %>%
+  drop_na(Position, score) %>%
+  group_by(Position) %>%
+  summarize(score = mean(score), .groups = "drop")
+
+# ---- 3) Assign variants to structural domains ----
+df_long <- df_residue %>%
+  tidyr::crossing(domains) %>% #Generates all possible combinations of (residue, domain)
+  filter(Position >= start, Position <= end) %>% #Keep only combinations where residues fall within domain boundaries
+  select(Position, score, domain)
+
+# ---- 4) Define interaction residues ----
+#We have pre-specified positions where LDLR interacts with the proteins MYLIP (E3 ubiquitin ligase) and PCSK9.
+#Because these residues do not cleanly fit into a contiguous domain, we select them in a separate step. 
+
+MYLIP_positions <- c(813, 816, 817, 820, 821, 823)
+
+PCSK9_positions <- c(
+  295, 297, 298, 299, 300, 301,
+  306, 307, 308, 309, 310, 312,
+  318, 355, 396, 626
+)
+
+# ---- 5) Add MYLIP/PCSK9-interacting regions ----
+df_interactions <- df_residue %>%
+  filter(Position %in% c(MYLIP_positions, PCSK9_positions)) %>%
+  mutate(
+    domain = case_when(
+      Position %in% MYLIP_positions ~ "MYLIP-interacting",
+      Position %in% PCSK9_positions ~ "PCSK9-interacting"
+    )
+  )
+
+# Combine structural + interaction annotations
+df_long <- bind_rows(df_long, df_interactions)
+
+# ---- 6) Set domain order for labels on the x-axis of the final figure ----
+domain_cols <- c(
+  unique(domains$domain),
+  "MYLIP-interacting",
+  "PCSK9-interacting"
+)
+
+df_long <- df_long %>%
+  mutate(domain = factor(domain, levels = domain_cols))
+
+# ---- 7) Pretty labels ----
+pretty_labels <- domain_cols
+
+pretty_labels <- gsub("^\\s+|\\s+$", "", pretty_labels)
+pretty_labels <- gsub("\\.+", " ", pretty_labels)
+
+pretty_labels <- sub("^(LDLR class A) (\\d+)$", "\\1 repeat \\2", pretty_labels)
+pretty_labels <- sub("^(LDLR class B) (\\d+)$", "\\1 repeat \\2", pretty_labels)
+pretty_labels <- sub("^(EGF-like) (\\d+)$", "\\1 repeat \\2", pretty_labels)
+
+pretty_labels <- sub("^Ca2\\+ binding$", "Ca²⁺ binding region", pretty_labels)
+pretty_labels <- sub("^Disordered$", "Disordered region", pretty_labels)
+
+# turn into named vector for ggplot
+pretty_labels <- setNames(pretty_labels, domain_cols)
+
+# ---- 8) Plot ----
+fig_5A <- ggplot(df_long, aes(x = domain, y = score, fill = domain)) +
+  geom_violin(scale = "width", trim = TRUE, color = "black") +
+  geom_boxplot(width = 0.12, outlier.shape = NA, alpha = 0.6, color = "black") +
+  geom_jitter(width = 0.08, alpha = 0.3, size = 0.6) +
+  labs(x = NULL, y = "LDLR-FL FUSE score") +
+  scale_fill_manual(values = scales::hue_pal()(length(domain_cols))) +
+  scale_x_discrete(labels = pretty_labels) +
+  theme_classic(base_size = 13) +
+  theme(
+    axis.title.y = element_text(size = 20, color = "black"),
+    axis.text.x  = element_text(angle = 90, hjust = 1, size = 20, color = "black"),
+    axis.text.y  = element_text(size = 18, color = "black"),
+    legend.position = "none"
+  )
+
+#Printing out figure panel 
+fig_5A
+
+# ---- 9) Save ----
+ggsave(
+  filename = file.path(here("output", "figure_5"), "Fig5A.pdf"),
+  plot     = fig_5A,
+  width    = 8,
+  height   = 10,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r fig_5B}
+# ---- 1) Map each residue to a domain ----
+df_mapped <- BEAN_FUSE_FL %>%
+  select(Position, z = `LDLR-FL BEAN_score normalized`) %>%
+  tidyr::crossing(domains) %>%
+  filter(Position >= start, Position <= end) %>%
+  select(Position, z, domain)
+
+# ---- 2) Compute per-domain stats ----
+# We are specifically subsetting variants to either z < -1.96 or z > 1.96 
+df_summary <- df_mapped %>%
+  group_by(domain) %>%
+  summarise(
+    total_residues = n(),
+    n_decreased = sum(z < -1.96, na.rm = TRUE),
+    n_increased = sum(z > 1.96, na.rm = TRUE),
+    prop_decreased = n_decreased / total_residues,
+    prop_increased = n_increased / total_residues
+  ) %>%
+  ungroup()
+
+# ---- 3) Order domains (biological order) ----
+domain_order <- domains$domain
+
+df_summary <- df_summary %>%
+  mutate(domain = factor(domain, levels = domain_order)) %>%
+  arrange(domain)
+
+# ---- 4) Build matrix for heatmap ----
+data <- rbind(
+  df_summary$prop_decreased,
+  df_summary$prop_increased
+)
+
+colnames(data) <- df_summary$domain
+rownames(data) <- c(
+  "# significantly decreased uptake",
+  "# significantly increased uptake"
+)
+
+# ---- 5) Clean column labels (same logic as before) ----
+cn <- colnames(data)
+cn <- gsub("^\\s+|\\s+$", "", cn)
+cn <- gsub("\\.+", " ", cn)
+
+labCol <- cn
+labCol <- sub("^(LDLR class A) (\\d+)$", "\\1 repeat \\2", labCol)
+labCol <- sub("^(LDLR class B) (\\d+)$", "\\1 repeat \\2", labCol)
+labCol <- sub("^(EGF-like) (\\d+)$", "\\1 repeat \\2", labCol)
+labCol <- sub("^Ca2\\+ binding$", "Ca²⁺ binding region", labCol)
+labCol <- sub("^Disordered$", "Disordered region", labCol)
+
+# ---- 6) Color palette ----
+pal <- viridis::viridis(256, option = "D")
+
+# ---- 7) Plot heatmap ----
+fig_5B <- gplots::heatmap.2(
+  data,
+  scale = "none",
+  col = pal,
+  trace = "none",
+  density.info = "none",
+  dendrogram = "none",
+  Rowv = FALSE, Colv = FALSE,
+  labCol = labCol,
+  key = TRUE, key.title = "Value", key.xlab = "Proportion",
+  margins = c(16, 16),
+  srtCol = 90,
+  cexCol = 0.85,
+  adjCol = c(1, 1),
+  cexRow = 1.0
+)
+
+# ---- 8) Save ----
+pdf(file.path(here("output", "figure_5"), "Fig5B.pdf"), width = 12.8, height = 7.19)
+gplots::heatmap.2(
+  data,
+  scale = "none",
+  col = pal,
+  trace = "none",
+  density.info = "none",
+  dendrogram = "none",
+  Rowv = FALSE, Colv = FALSE,
+  labCol = labCol,
+  key = TRUE, key.title = "Value", key.xlab = "Proportion",
+  margins = c(16, 16),
+  srtCol = 90,
+  cexCol = 0.85,
+  adjCol = c(1, 1),
+  cexRow = 1.0
+)
+dev.off()
+```
+
+
+```{r fig_5C}
+label_size <- 6
+
+# ---- 1) Highlighting MYLIP/PCSK9 interacting residues ----
+mylip_res <- c(813, 816, 817, 823)
+pcsk9_res <- c(316, 318, 319, 320, 321, 322, 327, 328, 329, 330, 331, 333, 339, 376, 417, 647)
+
+# ---- 2) GOF variants (data frame) ----
+GOF_targets <- BEAN_FUSE_FL %>%
+  filter(`Variant ID` %in% c("G219D", "S213L", "K223E", "K223N")) %>%
+  group_by(`Variant ID`) %>%
+  slice_max(`LDLR-FL BEAN_score normalized`, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  mutate(lbl = `Variant ID`)
+
+# ---- 3) LOF variants ----
+LOF_targets <- BEAN_FUSE_FL %>%
+  filter(`Variant ID` %in% c("D221Y","D224H")) %>%
+  group_by(`Variant ID`) %>%
+  slice_max(`LDLR-FL BEAN_score normalized`, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  mutate(lbl = `Variant ID`)
+
+# ---- 4) Define residue domain regions and color ----
+BEAN_FUSE_FL <- BEAN_FUSE_FL %>%
+  mutate(domain = case_when(
+    Position >= 25  & Position <= 313 ~ "LDLR class A",
+    Position >= 314 & Position <= 393 ~ "EGF-like",
+    Position >= 397 & Position <= 658 ~ "LDLR class B",
+    Position >= 663 & Position <= 712 ~ "EGF-like",
+    TRUE ~ "Other"
+  ),
+  domain_color = case_when(
+    domain == "LDLR class A" ~ "#60C3D1",
+    domain == "EGF-like"     ~ "#C3C45E",
+    domain == "LDLR class B" ~ "#CF4D44",
+    TRUE                     ~ "#BCBCBC"
+  ))
+
+# ---- 5) Highlight PCSK9/MYLIP-interacting residues ----
+BEAN_FUSE_FL <- BEAN_FUSE_FL %>%
+  mutate(
+    special_color = case_when(
+      Position %in% mylip_res ~ "#E0A159",  # yellow/orange
+      Position %in% pcsk9_res ~ "#A65BDB",  # purple
+      TRUE ~ NA_character_
+    ),
+    plot_color = dplyr::coalesce(special_color, domain_color)  # prefer special if present
+  )
+
+# ---- 6) Compute rolling mean per residue position ----
+# Note that the mean is a rolling average with a window size of 5 as specified by the parameter k in rollmean
+LDLR_avg <- BEAN_FUSE_FL %>%
+  filter(!is.na(`LDLR-FL BEAN_score normalized`)) %>%
+  group_by(Position) %>%
+  summarise(mean_mu = mean(`LDLR-FL BEAN_score normalized`, na.rm = TRUE), .groups = "drop") %>%
+  arrange(Position) %>%
+  mutate(roll_mu = rollmean(mean_mu, k = 5, fill = NA, align = "center"))
+
+# ---- 7) Plot ----
+fig_5C <- ggplot(BEAN_FUSE_FL, aes(Position, `LDLR-FL BEAN_score normalized`)) +
+  geom_point(aes(color = plot_color), size = 2, alpha = 0.7, shape = 16, stroke = 0) +
+  geom_hline(yintercept = c(-1.96, 1.96),
+             linetype = "dotted",
+             color = "black",
+             linewidth = 0.6) +
+  scale_color_identity() +
+  theme_classic() +
+  labs(x = "LDLR residue position", y = "LDLR-FL BEAN z score") +
+  theme(
+    axis.title.x = element_text(size = 18),
+    axis.title.y = element_text(size = 18),
+    axis.text.x  = element_text(size = 18),
+    axis.text.y  = element_text(size = 18)
+  ) +
+
+  #Highlight GOF/LOF variants
+  geom_point(data = GOF_targets, aes(`Position`, `LDLR-FL BEAN_score normalized`),
+             shape = 1, size = 3, stroke = 1.2, color = "black", inherit.aes = FALSE) +
+  ggrepel::geom_text_repel(data = GOF_targets, aes(Position, `LDLR-FL BEAN_score normalized`, label = `Variant ID`),
+                           size = label_size, inherit.aes = FALSE) +
+
+  geom_point(data = LOF_targets, aes(`Position`, `LDLR-FL BEAN_score normalized`),
+             shape = 1, size = 3, stroke = 1.2, color = "black", inherit.aes = FALSE) +
+  ggrepel::geom_text_repel(data = LOF_targets, aes(`Position`, `LDLR-FL BEAN_score normalized`, label = `Variant ID`),
+                           size = label_size, inherit.aes = FALSE) +
+
+  #Domain boundaries + rolling mean
+  geom_vline(xintercept = c(195, 233), linetype = "dotted", linewidth = 0.6, color = "black") +
+  geom_line(data = LDLR_avg, aes(x = Position, y = roll_mu), color = "black", linewidth = 1, alpha = 0.7)
+
+#Printing out figure panel 
+fig_5C
+
+# ---- 8) Save ----
+ggsave(
+  filename = file.path(here("output", "figure_5"), "Fig5C.pdf"),
+  plot     = fig_5C,
+  width    = 10,
+  height   = 5,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r fig_5D}
+# Load data
+combined_df <- LDLR_GOF
+
+# ---- 1) Detect the construct column ----
+construct_candidates <- c(
+  "Construct type","Construct name","Construct",
+  "construct_type","construct_name","construct"
+)
+construct_col <- intersect(construct_candidates, names(combined_df))
+if (length(construct_col) == 0) {
+  construct_col <- names(combined_df)[grepl("(?i)^construct", names(combined_df))]
+}
+stopifnot(length(construct_col) >= 1)
+construct_col <- construct_col[1]
+
+# ---- 2) Detect replicate columns like "073025 rep 1" using regex ----
+rep_cols <- grep("^\\d{6}\\s*rep\\s*\\d+$", names(combined_df),
+                 value = TRUE, ignore.case = TRUE)
+stopifnot(length(rep_cols) >= 1)
+
+# ---- 3) Normalize construct labels ----
+combined_df <- combined_df %>%
+  mutate(
+    !!construct_col := .data[[construct_col]] %>%
+      as.character() %>%
+      str_replace_all("\\u00A0", " ") %>%
+      str_squish() %>%
+      str_replace(regex("^wt$", ignore_case = TRUE), "WT")
+  )
+
+# ---- 4) Desired full ordering ----
+final_levels <- c(
+  "WT",
+  "D221Y",
+  "D224H",
+  "S213L",
+  "G219D",
+  "K223E",
+  "S213L G219D",
+  "S213L K223E",
+  "G219D K223E",
+  "S213L G219D K223E"
+)
+
+#We determined that these constructs were not worth plotting in the final figure, because they have variants besides the 
+#three GOF (S213L, G219D, K223E) and two LOF (D221Y, D224H)
+drop_constructs <- c(
+  "S213L G219D K223E K225G",
+  "H203K L205G S213L G219D K223E K225G",
+  "H203K L205G S213L",
+  "S213L G219D K223E K225G",
+  "H203K L205G S213L G219D K223E K225G",
+  "H203K L205G S213L"
+)
+
+keep_levels <- setdiff(final_levels, drop_constructs)
+
+# ---- 5) Classify Singles vs Combinations ----
+classify_group <- function(x) { 
+  ifelse(
+    x == "WT",
+    "Singles",
+    ifelse(str_detect(x, " "), "Combinations", "Singles")
+  )
+}
+
+# ---- 6) Long format ----
+long_all <- combined_df %>%
+  pivot_longer(
+    cols = all_of(rep_cols),
+    names_to = "replicate",
+    values_to = "value"
+  ) %>%
+  mutate(
+    group = classify_group(.data[[construct_col]])
+  )
+
+# ---- 7) Summary statistics ----
+sum_all <- long_all %>%
+  group_by(.data[[construct_col]], group) %>%
+  summarise(
+    n        = sum(!is.na(value)),
+    mean_LFC = mean(value, na.rm = TRUE),
+    sd_LFC   = sd(value, na.rm = TRUE),
+    sem_LFC  = sd_LFC / sqrt(n),
+    .groups = "drop"
+  )
+
+# ---- 8) Define which constructs go into each figure panel ----
+
+#Panel 1 contains individual variant LDL uptake, Panel 2 contains LDL uptake for combinations of GOF variants
+
+#Individual variants (GOF+LOF)
+levels_singles <- c("WT","D221Y","D224H","S213L","G219D","K223E")
+
+#Combinations of GOF variants
+levels_combos <- c(
+  "WT",
+  "S213L G219D",
+  "S213L K223E",
+  "G219D K223E",
+  "S213L G219D K223E"
+)
+
+# Panel 1
+sum_s1 <- sum_all %>%
+  filter(.data[[construct_col]] %in% levels_singles) %>%
+  mutate(!!construct_col := factor(.data[[construct_col]], levels = levels_singles))
+
+long_s1 <- long_all %>%
+  filter(.data[[construct_col]] %in% levels_singles) %>%
+  mutate(!!construct_col := factor(.data[[construct_col]], levels = levels_singles))
+
+# Panel 2
+sum_s2 <- sum_all %>%
+  filter(.data[[construct_col]] %in% levels_combos) %>%
+  mutate(!!construct_col := factor(.data[[construct_col]], levels = levels_combos))
+
+long_s2 <- long_all %>%
+  filter(.data[[construct_col]] %in% levels_combos) %>%
+  mutate(!!construct_col := factor(.data[[construct_col]], levels = levels_combos))
+
+# ---- 9) Shared y-limits ----
+ymin <- min(
+  long_s1$value, long_s2$value,
+  sum_s1$mean_LFC - sum_s1$sem_LFC,
+  sum_s2$mean_LFC - sum_s2$sem_LFC,
+  na.rm = TRUE
+)
+ymax <- max(
+  long_s1$value, long_s2$value,
+  sum_s1$mean_LFC + sum_s1$sem_LFC,
+  sum_s2$mean_LFC + sum_s2$sem_LFC,
+  na.rm = TRUE
+)
+pad <- 0.08 * (ymax - ymin)
+y_limits <- c(ymin, ymax + pad)
+
+# ---- 10) Helper plot function ----
+make_one <- function(sum_df, long_df, y_limits, construct_col) {
+  ggplot(sum_df, aes(x = .data[[construct_col]], y = mean_LFC)) +
+    geom_col(aes(fill = .data[[construct_col]]),
+             color = "black", width = 0.7) +
+    scale_fill_manual(
+      values = c(
+        "WT"                = "steelblue",
+        "D221Y"             = "#DE647D",
+        "D224H"             = "#DE647D",
+        "S213L"             = "steelblue",
+        "G219D"             = "steelblue",
+        "K223E"             = "steelblue",
+        "S213L G219D"       = "steelblue",
+        "S213L K223E"       = "steelblue",
+        "G219D K223E"       = "steelblue",
+        "S213L G219D K223E" = "steelblue"
+      ),
+      guide = "none"
+    ) +
+    geom_errorbar(aes(ymin = mean_LFC - sem_LFC,
+                      ymax = mean_LFC + sem_LFC),
+                  width = 0.2, linewidth = 0.5) +
+    geom_jitter(
+      data = long_df,
+      aes(x = .data[[construct_col]], y = value),
+      width = 0.15, size = 1.8, alpha = 0.75,
+      inherit.aes = FALSE
+    ) +
+    scale_x_discrete(expand = expansion(add = 0.6)) +
+    scale_y_continuous(limits = y_limits,
+                       expand = expansion(mult = c(0.02,0))) +
+    labs(x = NULL, y = "Mean BODIPY-LDL ΔLFC") +
+    theme_classic() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1, size = 16, colour = "black"),
+      axis.text.y = element_text(size = 14, colour = "black"),
+      axis.title.y = element_text(size = 16, colour = "black",
+                                  margin = margin(r = 8)),
+      axis.ticks = element_line(linewidth = 0.4, colour = "black"),
+      axis.line = element_line(linewidth = 0.5, colour = "black"),
+      legend.position = "none",
+      plot.margin = margin(6, 12, 24, 12)
+    ) +
+    coord_cartesian(clip = "off")
+}
+
+# ---- 11) Build the figure panels ----
+p1 <- make_one(sum_s1, long_s1, y_limits, construct_col)
+p2 <- make_one(sum_s2, long_s2, y_limits, construct_col)
+
+fig_5D <- p1+p2
+
+#Printing out figure panel 
+fig_5D
+
+# ---- 12) Save ----
+ggsave(
+  filename = file.path(here("output", "figure_5"), "Fig5D.pdf"),
+  plot     = fig_5D,
+  width    = 10,
+  height   = 5,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r fig_5D t test}
+# Make temporary copies with a simple column name
+long_s1_test <- long_s1 %>%
+  rename(construct = all_of(construct_col))
+
+long_s2_test <- long_s2 %>%
+  rename(construct = all_of(construct_col))
+
+# Panel 1 (Singles)
+stat_s1 <- compare_means(
+  value ~ construct,
+  data = long_s1_test,
+  method = "t.test",
+  method.args = list(var.equal = FALSE),
+  ref.group = "WT",
+  p.adjust.method = "holm"
+) %>%
+  filter(group2 %in% c("D221Y", "D224H", "S213L", "G219D", "K223E")) %>%
+  mutate(panel = "Singles")
+
+# Panel 2 (Combinations)
+stat_s2 <- compare_means(
+  value ~ construct,
+  data = long_s2_test,
+  method = "t.test",
+  method.args = list(var.equal = FALSE),
+  ref.group = "WT",
+  p.adjust.method = "holm"
+) %>%
+  filter(group2 %in% c(
+    "S213L G219D",
+    "S213L K223E",
+    "G219D K223E",
+    "S213L G219D K223E"
+  )) %>%
+  mutate(panel = "Combinations")
+
+# Combine + adjusted stars
+
+stat_all <- bind_rows(stat_s1, stat_s2) %>%
+  mutate(
+    p.signif.adj = case_when(
+      p.adj <= 1e-4 ~ "****",
+      p.adj <= 1e-3 ~ "***",
+      p.adj <= 1e-2 ~ "**",
+      p.adj <= 0.05 ~ "*",
+      TRUE ~ "n.s."
+    )
+  )
+
+stat_all
+```
+
+```{r fig_5E}
+#Figure 5E
+
+df <- LDLR_LOF
+
+# ---- 1) Detect columns ----
+construct_candidates <- c("Construct type","Construct name","Construct",
+                          "construct_type","construct_name","construct")
+construct_col <- intersect(construct_candidates, names(df))
+if (length(construct_col) == 0) {
+  construct_col <- names(df)[grepl("(?i)^construct", names(df))]
+}
+if (length(construct_col) == 0) {
+  stop("Couldn't find a construct column. Columns available:\n",
+       paste(names(df), collapse=", "))
+}
+construct_col <- construct_col[1]
+
+# Replicates like "073025 rep 1", "061825 rep 2", etc.
+rep_cols <- names(df)[grepl("^\\d{6}\\s*rep\\s*\\d+$", names(df), ignore.case = TRUE)]
+if (length(rep_cols) == 0) {
+  rep_cols <- names(df)[grepl("rep\\s*\\d+$", names(df), ignore.case = TRUE)]
+}
+if (length(rep_cols) == 0) {
+  stop("Couldn't find replicate columns (e.g., '073025 rep 1'). Columns:\n",
+       paste(names(df), collapse=", "))
+}
+
+message("Using construct column: ", construct_col)
+message("Replicate columns: ", paste(rep_cols, collapse = ", "))
+
+# ---- 2) Clean construct labels ----
+df <- df %>%
+  mutate(
+    !!construct_col := .data[[construct_col]] %>%
+      as.character() %>%
+      str_replace_all("\\u00A0", " ") %>%  # NBSP -> space
+      str_squish() %>%
+      str_replace(regex("^wt$", ignore_case = TRUE), "WT")
+  )
+
+# ---- 3) Long format ----
+tmp_rep <- as.data.frame(df[, rep_cols, drop = FALSE], check.names = FALSE)
+st      <- utils::stack(tmp_rep)    # columns stacked; gives `values` and `ind`
+row_id  <- rep(seq_len(nrow(tmp_rep)), times = ncol(tmp_rep))
+meta    <- df[, setdiff(names(df), rep_cols), drop = FALSE]
+
+long_df <- cbind(
+  replicate = as.character(st$ind),
+  value     = suppressWarnings(as.numeric(st$values)),
+  meta[row_id, , drop = FALSE]
+)
+long_df <- as.data.frame(long_df, stringsAsFactors = FALSE)
+long_df$replicate <- factor(long_df$replicate, levels = rep_cols)
+
+# keep valid construct rows
+long_df <- long_df %>% filter(!is.na(.data[[construct_col]]), .data[[construct_col]] != "")
+
+# ---- 4) Summarise per construct ----
+summary_df <- long_df %>%
+  group_by(.data[[construct_col]]) %>%
+  summarise(
+    n        = sum(!is.na(value)),
+    mean_LFC = mean(value, na.rm = TRUE),
+    sd_LFC   = sd(value,   na.rm = TRUE),
+    sem_LFC  = sd_LFC / sqrt(pmax(n, 1)),
+    .groups  = "drop"
+  ) %>%
+  # remove specific constructs
+  filter(!.data[[construct_col]] %in% c("W87G", "D90N"))
+
+# also remove them from the replicate-level data
+long_df <- long_df %>%
+  filter(!.data[[construct_col]] %in% c("W87G", "D90N"))
+
+# ---- 5) Order: WT first then by descending mean ----
+has_wt <- any(summary_df[[construct_col]] == "WT", na.rm = TRUE)
+if (has_wt) {
+  ordered_levels <- c(
+    "WT",
+    summary_df %>%
+      filter(.data[[construct_col]] != "WT") %>%
+      arrange(desc(mean_LFC)) %>%
+      pull(!!rlang::sym(construct_col))
+  )
+} else {
+  ordered_levels <- summary_df %>%
+    arrange(desc(mean_LFC)) %>%
+    pull(!!rlang::sym(construct_col))
+}
+
+summary_df <- summary_df %>%
+  mutate(!!construct_col := factor(.data[[construct_col]], levels = ordered_levels))
+
+long_df <- long_df %>%
+  mutate(!!construct_col := factor(.data[[construct_col]], levels = ordered_levels))
+
+# --- 6) Plot ---
+fig_5E <- ggplot(summary_df, aes(x = .data[[construct_col]], y = mean_LFC)) +
+  geom_col(fill = "#DE647D", color = "black", width = 0.7) +
+  geom_errorbar(aes(ymin = mean_LFC - sem_LFC, ymax = mean_LFC + sem_LFC),
+                width = 0.2, linewidth = 0.5) +
+  geom_jitter(
+    data = long_df,
+    aes(x = .data[[construct_col]], y = value),
+    width = 0.15, size = 1.8, alpha = 0.75, inherit.aes = FALSE
+  ) +
+  scale_x_discrete(na.translate = FALSE, drop = FALSE) +
+  labs(
+    x = NULL,
+    y = "Mean BODIPY-LDL ΔLFC"
+  ) +
+  theme_classic() +
+  theme(
+    axis.text.x  = element_text(angle = 45, hjust = 1, size = 16, colour = "black"),
+    axis.text.y  = element_text(size = 14, colour = "black"),
+    axis.title.y = element_text(size = 16, colour = "black", margin = margin(r = 8)), # <- bigger y title
+    axis.ticks   = element_line(linewidth = 0.4, colour = "black"),
+    axis.line    = element_line(linewidth = 0.5, colour = "black")
+  )
+
+fig_5E
+
+ggsave(
+  filename = file.path(here("output", "figure_5"), "Fig5E.pdf"),
+  plot     = fig_5E,
+  width    = 5,
+  height   = 5,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r fig_5E t test}
+# Rename construct column for easier testing
+long_df_test <- long_df %>%
+  rename(construct = all_of(construct_col))
+
+# Keep only the constructs involved in the hypothesis family
+keep_constructs <- c("WT", "E101K", "E240K", "D221G", "D227E")
+
+long_df_test_sub <- long_df_test %>%
+  filter(construct %in% keep_constructs)
+
+# Run only WT-vs-variant comparisons, with Holm correction across those 4 tests
+stat_5E <- compare_means(
+  value ~ construct,
+  data = long_df_test_sub,
+  method = "t.test",
+  method.args = list(var.equal = FALSE),   # Welch
+  ref.group = "WT",
+  p.adjust.method = "holm"
+) %>%
+  mutate(
+    p.signif.adj = case_when(
+      p.adj <= 1e-4 ~ "****",
+      p.adj <= 1e-3 ~ "***",
+      p.adj <= 1e-2 ~ "**",
+      p.adj <= 0.05 ~ "*",
+      TRUE ~ "n.s."
+    )
+  )
+
+stat_5E
+```
+
+```{r fig_5F-I}
+#Figure 5F-I
+
+df <- LDLR_GOF_LOF
+
+# ---- 1) Detect columns ----
+construct_candidates <- c("Construct type","Construct name","Construct",
+                          "construct_type","construct_name","construct")
+construct_col <- intersect(construct_candidates, names(df))
+if (length(construct_col) == 0) {
+  construct_col <- names(df)[grepl("(?i)^construct", names(df))]
+}
+stopifnot("No construct column found" = length(construct_col) >= 1)
+construct_col <- construct_col[1]
+
+# Replicate columns like "073025 rep 1", "061825 rep 2", etc.
+rep_cols <- names(df)[grepl("^\\d{6}\\s*rep\\s*\\d+$", names(df), ignore.case = TRUE)]
+if (length(rep_cols) == 0) {
+  rep_cols <- names(df)[grepl("rep\\s*\\d+$", names(df), ignore.case = TRUE)]
+}
+stopifnot("No replicate columns detected (e.g. '073025 rep 1')" = length(rep_cols) >= 1)
+
+# ---- 2) Clean construct labels ----
+df <- df %>%
+  mutate(
+    !!construct_col := .data[[construct_col]] %>%
+      as.character() %>%
+      str_replace_all("\\u00A0", " ") %>%   # non-breaking space -> space
+      str_squish() %>%
+      str_replace_all("[[:space:]]+", "_") %>%  # spaces -> underscores (uniform)
+      str_replace(regex("^wt$", ignore_case = TRUE), "WT")
+  )
+
+# ---- 3) Long format ----
+tmp_rep <- as.data.frame(df[, rep_cols, drop = FALSE], check.names = FALSE)
+st      <- utils::stack(tmp_rep)              # values + source column in `ind`
+row_id  <- rep(seq_len(nrow(tmp_rep)), times = ncol(tmp_rep))
+meta    <- df[, setdiff(names(df), rep_cols), drop = FALSE]
+
+long_df <- cbind(
+  replicate = as.character(st$ind),
+  value     = suppressWarnings(as.numeric(st$values)),
+  meta[row_id, , drop = FALSE]
+)
+long_df <- as.data.frame(long_df, stringsAsFactors = FALSE)
+long_df$replicate <- factor(long_df$replicate, levels = rep_cols)
+long_df <- long_df %>% filter(!is.na(.data[[construct_col]]), .data[[construct_col]] != "")
+
+# ---- 4) Helper (color bars per panel) ----
+make_plot <- function(summary_sub, long_sub, title_text, y_limits = NULL,
+                      red_label, red_hex = "#DE647D", purple_hex = "#A65BDB",
+                      wt_hex = "steelblue") {
+
+  summary_sub <- summary_sub %>%
+    mutate(bar_color = dplyr::case_when(
+      .data[[construct_col]] == "WT"      ~ wt_hex,
+      .data[[construct_col]] == red_label ~ red_hex,
+      TRUE                                ~ purple_hex
+    ))
+
+  p <- ggplot(summary_sub, aes(x = .data[[construct_col]], y = mean_LFC)) +
+    geom_col(aes(fill = bar_color), color = "black", width = 0.7) +
+    scale_fill_identity() +
+    geom_errorbar(aes(ymin = mean_LFC - sem_LFC, ymax = mean_LFC + sem_LFC),
+                  width = 0.2, linewidth = 0.5) +
+    geom_jitter(
+      data = long_sub,
+      aes(x = .data[[construct_col]], y = value),
+      width = 0.15, size = 1.8, alpha = 0.75, inherit.aes = FALSE
+    ) +
+    scale_x_discrete(
+  na.translate = FALSE,
+  labels = function(x) gsub("_", " ", x)
+    ) + 
+    labs(
+      x = NULL,
+      y = "Mean BODIPY-LDL ΔLFC"
+      # title = title_text
+    ) +
+    theme_classic() +
+    theme(
+      axis.text.x  = element_text(angle = 45, hjust = 1, size = 12, colour = "black"),
+      axis.text.y  = element_text(size = 12, colour = "black"),
+      axis.title.y = element_text(size = 14, colour = "black"),
+      axis.ticks   = element_line(linewidth = 0.4, colour = "black"),
+      axis.line    = element_line(linewidth = 0.5, colour = "black"),
+      legend.position = "none"
+    )
+
+  if (!is.null(y_limits)) p <- p + coord_cartesian(ylim = y_limits)
+  p
+}
+
+# ---- 5) Define the four panels (underscore style) ----
+levels_E101K <- c("WT","E101K","G219D_E101K","S213L_E101K","S213L_G219D_K223E_E101K")
+levels_D221G <- c("WT","D221G","G219D_D221G","S213L_G219D_D221G")
+levels_D227E <- c("WT","D227E","G219D_D227E","S213L_G219D_D227E")
+levels_E240K <- c("WT","E240K","G219D_E240K","S213L_E240K","S213L_G219D_K223E_E240K")
+
+# ---- 6) Build data + share a common y-axis across all four ----
+# Drop S213L_E101K from the E101K panel
+dat_E101K <- summarize_for_levels(setdiff(levels_E101K, "S213L_E101K"))
+dat_D221G <- summarize_for_levels(levels_D221G)
+dat_D227E <- summarize_for_levels(levels_D227E)
+# Drop S213L_E240K from the E240K panel
+dat_E240K <- summarize_for_levels(setdiff(levels_E240K, "S213L_E240K"))
+
+ymin <- min(
+  dat_E101K$summary$mean_LFC - dat_E101K$summary$sem_LFC,
+  dat_D221G$summary$mean_LFC - dat_D221G$summary$sem_LFC,
+  dat_D227E$summary$mean_LFC - dat_D227E$summary$sem_LFC,
+  dat_E240K$summary$mean_LFC - dat_E240K$summary$sem_LFC,
+  na.rm = TRUE
+)
+ymax <- max(
+  dat_E101K$summary$mean_LFC + dat_E101K$summary$sem_LFC,
+  dat_D221G$summary$mean_LFC + dat_D221G$summary$sem_LFC,
+  dat_D227E$summary$mean_LFC + dat_D227E$summary$sem_LFC,
+  dat_E240K$summary$mean_LFC + dat_E240K$summary$sem_LFC,
+  na.rm = TRUE
+)
+y_limits <- c(ymin, ymax)
+
+# ---- 7) Build panels with requested colors ----
+# Panel order left→right: E101K, E240K, D221G, D227E
+# Red bar in each: the single LOF (E101K / E240K / D221G / D227E)
+# All non-WT others: purple
+p_E101K <- make_plot(dat_E101K$summary, dat_E101K$long,
+                     "LDLR+/LDLR− FITC ΔLFC: +E101K", y_limits,
+                     red_label = "E101K")
+
+p_E240K <- make_plot(dat_E240K$summary, dat_E240K$long,
+                     "LDLR+/LDLR− FITC ΔLFC: +E240K", y_limits,
+                     red_label = "E240K")
+
+p_D221G <- make_plot(dat_D221G$summary, dat_D221G$long,
+                     "LDLR+/LDLR− FITC ΔLFC: +D221G", y_limits,
+                     red_label = "D221G")
+
+p_D227E <- make_plot(dat_D227E$summary, dat_D227E$long,
+                     "LDLR+/LDLR− FITC ΔLFC: +D227E", y_limits,
+                     red_label = "D227E")
+
+# Make a single row of the four plots
+fig_5F_I <- p_E101K | p_E240K | p_D221G | p_D227E
+
+#Printing out figure panel 
+fig_5F_I  
+
+# ---- 8) Save ----
+ggsave(
+  filename = file.path(here("output", "figure_5"), "Fig5F-I.pdf"),
+  plot     = fig_5F_I,
+  width    = 15,
+  height   = 5,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r fig_5F_I statistical testing}
+# ---- 1) Helper: safe Welch t-test ----
+
+run_welch <- function(data, group_col, g1, g2) {
+
+  sub <- data %>%
+    filter(.data[[group_col]] %in% c(g1, g2)) %>%
+    mutate(.group = droplevels(factor(.data[[group_col]]))) %>%
+    filter(!is.na(value))
+
+  # Safety check (this is what was causing your error)
+  if (length(unique(sub$.group)) != 2) {
+    return(tibble(
+      group1 = g1,
+      group2 = g2,
+      n1 = NA,
+      n2 = NA,
+      mean1 = NA,
+      mean2 = NA,
+      p = NA
+    ))
+  }
+
+  test <- t.test(value ~ .group, data = sub, var.equal = FALSE)
+
+  tibble(
+    group1 = g1,
+    group2 = g2,
+    n1 = sum(sub$.group == g1),
+    n2 = sum(sub$.group == g2),
+    mean1 = mean(sub$value[sub$.group == g1], na.rm = TRUE),
+    mean2 = mean(sub$value[sub$.group == g2], na.rm = TRUE),
+    p = test$p.value
+  )
+}
+
+# ---- 2) Define comparisons ----
+
+comparisons_by_panel <- list(
+  Panel_1 = list(
+    c("E101K", "G219D_E101K"),
+    c("E101K", "S213L_G219D_K223E_E101K")
+  ),
+  Panel_2 = list(
+    c("E240K", "G219D_E240K"),
+    c("E240K", "S213L_G219D_K223E_E240K")
+  ),
+  Panel_3 = list(
+    c("D221G", "G219D_D221G"),
+    c("D221G", "S213L_G219D_D221G")
+  ),
+  Panel_4 = list(
+    c("D227E", "G219D_D227E"),
+    c("D227E", "S213L_G219D_D227E")
+  )
+)
+
+# ---- 3) Run all tests ----
+
+stat_results <- imap_dfr(comparisons_by_panel, function(comp_list, panel_name) {
+
+  map_dfr(comp_list, function(pair) {
+    run_welch(long_df, construct_col, pair[1], pair[2])
+  }) %>%
+    mutate(panel = panel_name)
+})
+
+# ---- 4) Holm correction (within panel) ----
+
+stat_results <- stat_results %>%
+  group_by(panel) %>%
+  mutate(p.adj = p.adjust(p, method = "holm")) %>%
+  ungroup()
+
+# ---- 5) Add significance labels ----
+
+stat_results <- stat_results %>%
+  mutate(
+    p.signif = case_when(
+      is.na(p.adj)        ~ NA_character_,
+      p.adj <= 0.0001     ~ "****",
+      p.adj <= 0.001      ~ "***",
+      p.adj <= 0.01       ~ "**",
+      p.adj <= 0.05       ~ "*",
+      TRUE                ~ "ns"
+    ),
+    comparison = paste(group1, "vs.", group2)
+  )
+
+# ---- 6) Final clean output ----
+
+stat_results %>%
+  select(panel, comparison, n1, n2, mean1, mean2, p, p.adj, p.signif)
+```

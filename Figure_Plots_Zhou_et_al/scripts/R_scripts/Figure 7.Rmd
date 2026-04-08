@@ -1,0 +1,603 @@
+---
+title: "Figure 7"
+author: "Phil Zhou"
+date: "2025-11-18"
+output: html_document
+---
+
+```{r load_packages}
+library(svglite)
+library(readr)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(ggrepel)
+library(readxl)
+library(tidyverse)
+library(pheatmap)
+library(viridis)
+library(gplots)
+library(zoo)
+library(patchwork)
+library(corrplot)
+library(ggpubr)
+library(tidyr)
+library(here)
+```
+
+```{r load_dfs}
+BEAN_FUSE_FL <- read_csv(
+  here("data", "0326_LDLR_mastersheet.csv")
+)
+
+alphagenome_SA_raw <- read.csv(
+  here("data", "splicing_analysis", "AlphaGenome_SA.csv")
+)
+
+alphagenome_SD_raw <- read.csv(
+  here("data", "splicing_analysis", "AlphaGenome_SD.csv")
+)
+
+fig_7G_mCherry_df <- read_xlsx(
+  here("data", "splicing_analysis", "Fig7G_LDLRsplicing.xlsx"),
+  sheet = "mCherry_fluorescence"
+)
+
+fig_7G_splicing_ratios_df <- read_xlsx(
+  here("data", "splicing_analysis", "Fig7G_LDLRsplicing.xlsx"),
+  sheet = "splicing_ratios"
+)
+```
+
+```{r fig_7C}
+# Add cysteine flag
+BEAN_FUSE_FL <- BEAN_FUSE_FL %>%
+  mutate(is_cysteine = `Starting AA` == "C")
+
+# ---- Define target variants
+GOF_names <- c("G219D", "S213L", "K223E")
+
+# ---- Extract their coordinates from the dataset
+GOF_tabet <- BEAN_FUSE_FL %>%
+  filter(`Variant ID` %in% GOF_names)
+
+# ---- Base plot aesthetic settings
+base_theme <- theme_classic() +
+  theme(
+    axis.title = element_text(size = 18, color = "black"),
+    axis.text  = element_text(size = 16, color = "black"),
+    legend.position = "none"
+  )
+
+label_size <- 5.5
+
+# ---- Plotting Figure 7C ----
+# --- First plot (BEAN vs Tabet uptake score)
+fig_7C <- ggplot(
+  BEAN_FUSE_FL,
+  aes(x = `LDLR-FL BEAN_score normalized`, y = `Tabet LDL uptake score`, color = is_cysteine)
+) +
+  geom_point(size = 2, alpha = 0.7, shape = 16) +
+  scale_color_manual(values = c(`TRUE` = "black", `FALSE` = "black")) +
+
+  # GOF
+  geom_point(
+    data = GOF_tabet,
+    aes(x = `LDLR-FL BEAN_score normalized`, y = `Tabet LDL uptake score`),
+    inherit.aes = FALSE,
+    shape = 1, size = 3, stroke = 1.2, color = "blue"
+  ) +
+  geom_text_repel(
+    data = GOF_tabet,
+    aes(x = `LDLR-FL BEAN_score normalized`, y = `Tabet LDL uptake score`, label = `Variant ID`),
+    inherit.aes = FALSE,
+    size = label_size,
+    color = "blue"
+  ) +
+  labs(
+    x = "LDLR-FL BEAN z score",
+    y = "Tabet et al. LDL uptake score"
+  ) +
+  base_theme
+
+#Printing out figure panel 
+fig_7C
+
+# Pearson
+ cor(
+  BEAN_FUSE_FL$`LDLR-FL BEAN_score normalized`,
+  BEAN_FUSE_FL$`Tabet LDL uptake score`,
+  method = "pearson",
+  use = "pairwise.complete.obs"
+)
+
+# Spearman
+ cor(
+  BEAN_FUSE_FL$`LDLR-FL BEAN_score normalized`,
+  BEAN_FUSE_FL$`Tabet LDL uptake score`,
+  method = "spearman",
+  use = "pairwise.complete.obs"
+)
+ 
+ sum(!is.na(BEAN_FUSE_FL$`LDLR-FL BEAN_score normalized`) &
+    !is.na(BEAN_FUSE_FL$`Tabet LDL uptake score`))
+ 
+ ggsave(
+  filename = file.path(here("output", "figure_7"), "Fig7C.pdf"),
+  plot     = fig_7C,
+  width    = 8,
+  height   = 6,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r fig_7D}
+# Drop all-NA columns
+alphagenome_SD_raw <- alphagenome_SD_raw %>%
+  select(where(~ !all(is.na(.))))
+
+# Long format
+alphagenome_SD <- alphagenome_SD_raw %>%
+  pivot_longer(
+    cols = c(Intronic, Exonic, not.in.LDLR.FL),
+    names_to = "region_type",
+    values_to = "score"
+  ) %>%
+  # drop rows where that region has no score
+  filter(!is.na(score)) %>%
+  # standardize region_type labels
+  mutate(
+    region_type = recode(
+      region_type,
+      "Intronic"       = "intronic",
+      "Exonic"         = "exonic",
+      "not.in.LDLR.FL" = "not.in.LDLR.FL"
+    )
+  )
+
+# Base theme
+base_theme <- theme_classic() +
+  theme(
+    axis.title.x = element_text(size = 20, color = "black"),
+    axis.title.y = element_text(size = 20, color = "black"),
+    axis.text.x  = element_text(size = 18, color = "black"),
+    axis.text.y  = element_text(size = 18, color = "black"),
+    legend.position = "none"
+  )
+
+label_size <- 5.5
+
+# Rows to label, with custom text
+label_df <- alphagenome_SD %>% 
+  filter(!is.na(X) & X != "") %>%
+  mutate(
+    label_text = c(
+      "E615 p2",
+      "E615 p3",
+      "T713 p3",
+      "Q770 p3"
+    )
+  )
+
+# ---- Plotting Figure 7D ----
+fig_7D <- ggplot(
+  alphagenome_SD,
+  aes(
+    x = Distance.to.exon.end,
+    y = score,
+    color = region_type
+  )
+) +
+  geom_point(size = 2, alpha = 0.7, shape = 16) +
+  
+  # --- Label only the highlighted rows with custom text ---
+  geom_text_repel(
+    data = label_df,
+    aes(label = label_text),
+    color = "black",
+    size = label_size,
+    fontface = "bold",
+    box.padding = 0.4,
+    point.padding = 0.3,
+    min.segment.length = 0
+  ) +
+  
+  scale_color_manual(
+    values = c(
+      intronic         = "blue",
+      exonic           = "green",
+      not.in.LDLR.FL   = "red"
+    )
+  ) +
+  labs(
+    x = "Distance to exon end",
+    y = "AlphaGenome splice effect"
+  ) +
+  base_theme
+
+#Printing out figure panel 
+fig_7D
+
+#save figure panel
+ ggsave(
+  filename = file.path(here("output", "figure_7"), "Fig7D.pdf"),
+  plot     = fig_7D,
+  width    = 8,
+  height   = 6,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r fig_7E}
+splicing_variants_713 <- BEAN_FUSE_FL[BEAN_FUSE_FL$Position %in% c(713), ]$`Variant ID`
+
+splicing_tabet_713 <- BEAN_FUSE_FL %>%
+  filter(`Variant ID` %in% splicing_variants_713)
+
+# ---- Plotting Figure 7E ----
+fig_7E <- ggplot(
+  BEAN_FUSE_FL,
+  aes(x = `LDLR-FL FUSE_score normalized`, y = `Tabet LDL uptake score`)
+) +
+  # Baseline scatter in black
+  geom_point(size = 2, alpha = 0.7, shape = 16, color = "black") +
+  
+  # Highlight: splicing variants (green circle)
+  geom_point(
+    data = splicing_tabet_713,
+    aes(x = `LDLR-FL FUSE_score normalized`, y = `Tabet LDL uptake score`),
+    inherit.aes = FALSE,
+    shape = 1, size = 3, stroke = 1.2, color = "#86ED18"
+  ) +
+  
+  # Highlight labels
+  geom_text_repel(
+    data = splicing_tabet_713,
+    aes(
+      x = `LDLR-FL FUSE_score normalized`,
+      y = `Tabet LDL uptake score`,
+      label = `Variant ID`
+    ),
+    inherit.aes = FALSE,
+    size = label_size,
+    color = "#86ED18",
+    fontface = "bold"
+  ) +
+  
+  labs(
+    x = "LDLR-FL FUSE score",
+    y = "Tabet et al. LDL uptake score"
+  ) +
+  base_theme
+
+#Printing out figure panel 
+fig_7E
+
+ sum(!is.na(BEAN_FUSE_FL$`LDLR-FL FUSE_score normalized`) &
+    !is.na(BEAN_FUSE_FL$`Tabet LDL uptake score`))
+ 
+ # Pearson
+ cor(
+  BEAN_FUSE_FL$`LDLR-FL FUSE_score normalized`,
+  BEAN_FUSE_FL$`Tabet LDL uptake score`,
+  method = "pearson",
+  use = "pairwise.complete.obs"
+)
+
+# Spearman
+ cor(
+  BEAN_FUSE_FL$`LDLR-FL FUSE_score normalized`,
+  BEAN_FUSE_FL$`Tabet LDL uptake score`,
+  method = "spearman",
+  use = "pairwise.complete.obs"
+)
+ 
+ #save figure panel
+ ggsave(
+  filename = file.path(here("output", "figure_7"), "Fig7E.pdf"),
+  plot     = fig_7E,
+  width    = 8,
+  height   = 6,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r fig_7F}
+# master cleaned df for this relationship
+BEAN_FUSE_FL <- BEAN_FUSE_FL %>%
+  filter(!is.na(`LDLR-FL FUSE_score normalized`), !is.na(AlphaMissense))
+
+# ---- Plotting Figure 7F ----
+fig_7F <- ggplot(
+  BEAN_FUSE_FL,
+  aes(x = `LDLR-FL FUSE_score normalized`, y = AlphaMissense)
+) +
+  geom_point(size = 2, alpha = 0.7, shape = 16, color = "black") +
+  
+  # Highlight splicing variants
+  geom_point(
+    data = splicing_tabet_713,
+    aes(x = `LDLR-FL FUSE_score normalized`, y = AlphaMissense),
+    inherit.aes = FALSE,
+    shape = 1, size = 3, stroke = 1.2, color = "#86ED18"
+  ) +
+  
+  geom_text_repel(
+    data = splicing_tabet_713,
+    aes(x = `LDLR-FL FUSE_score normalized`, y = AlphaMissense, label = `Variant ID`),
+    inherit.aes = FALSE,
+    size = label_size, color = "#86ED18", fontface = "bold"
+  ) +
+  
+  labs(
+    x = "LDLR-FL FUSE score",
+    y = "AlphaMissense"
+  ) +
+  base_theme
+
+# Pearson
+ cor(
+  BEAN_FUSE_FL$`LDLR-FL FUSE_score normalized`,
+  BEAN_FUSE_FL$`AlphaMissense`,
+  method = "pearson",
+  use = "pairwise.complete.obs"
+)
+
+# Spearman
+ cor(
+  BEAN_FUSE_FL$`LDLR-FL FUSE_score normalized`,
+  BEAN_FUSE_FL$`AlphaMissense`,
+  method = "spearman",
+  use = "pairwise.complete.obs"
+)
+
+ #Printing out figure panel 
+fig_7F
+
+ sum(!is.na(BEAN_FUSE_FL$`LDLR-FL FUSE_score normalized`) &
+    !is.na(BEAN_FUSE_FL$`AlphaMissense`))
+
+ #save figure panel
+ ggsave(
+  filename = file.path(here("output", "figure_7"), "Fig7F.pdf"),
+  plot     = fig_7F,
+  width    = 8,
+  height   = 6,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r fig_7G}
+#1) Define subsets and order
+
+in14_levels <- c("LDLR-In14", "LDLR-In14-T713T (p3A>G)")
+in15_levels <- c("LDLR-In15", "LDLR-In15-Q770Q (p3A>G)")
+
+df_in14 <- fig_7G_mCherry_df %>%
+  filter(`Construct identity` %in% in14_levels) %>%
+  mutate(`Construct identity` = factor(`Construct identity`, levels = in14_levels))
+
+df_in15 <- fig_7G_mCherry_df %>%
+  filter(`Construct identity` %in% in15_levels) %>%
+  mutate(`Construct identity` = factor(`Construct identity`, levels = in15_levels))
+
+splice_in14 <- fig_7G_splicing_ratios_df %>%
+  filter(`Construct identity` %in% in14_levels) %>%
+  mutate(`Construct identity` = factor(`Construct identity`, levels = in14_levels))
+
+splice_in15 <- fig_7G_splicing_ratios_df %>%
+  filter(`Construct identity` %in% in15_levels) %>%
+  mutate(`Construct identity` = factor(`Construct identity`, levels = in15_levels))
+
+#2) Summary function
+
+summarize_plot <- function(df, splice_df) {
+  df %>%
+    group_by(`Construct identity`) %>%
+    summarise(
+      n = sum(!is.na(`P2 Median ECD-A`)),
+      mean_signal = mean(`P2 Median ECD-A`, na.rm = TRUE),
+      sd_signal = sd(`P2 Median ECD-A`, na.rm = TRUE),
+      sem_signal = sd_signal / sqrt(n),
+      .groups = "drop"
+    ) %>%
+    left_join(splice_df, by = "Construct identity") %>%
+    mutate(
+      splice_label = paste0(
+        sub("\\.?0+$", "", sprintf("%.2f", `Percent spliced`)),
+        "%"
+      )
+    )
+}
+
+sum_in14 <- summarize_plot(df_in14, splice_in14)
+sum_in15 <- summarize_plot(df_in15, splice_in15)
+
+#3) Welch t-tests + Holm correction
+
+p_in14 <- t.test(`P2 Median ECD-A` ~ `Construct identity`, data = df_in14)$p.value
+p_in15 <- t.test(`P2 Median ECD-A` ~ `Construct identity`, data = df_in15)$p.value
+
+pvals_adj <- p.adjust(c(p_in14, p_in15), method = "holm")
+
+p_to_symbol <- function(p) {
+  dplyr::case_when(
+    p <= 1e-4 ~ "****",
+    p <= 1e-3 ~ "***",
+    p <= 1e-2 ~ "**",
+    p <= 0.05 ~ "*",
+    TRUE ~ "n.s."
+  )
+}
+
+sig_in14 <- p_to_symbol(pvals_adj[1])
+sig_in15 <- p_to_symbol(pvals_adj[2])
+
+#4) Generic plotting function
+
+make_plot <- function(sum_df, raw_df, sig_label, title_text, show_y_title = TRUE) {
+
+  local_ymin <- min(
+    raw_df$`P2 Median ECD-A`,
+    sum_df$mean_signal - sum_df$sem_signal,
+    na.rm = TRUE
+  )
+
+  local_ymax <- max(
+    raw_df$`P2 Median ECD-A`,
+    sum_df$mean_signal + sum_df$sem_signal,
+    na.rm = TRUE
+  )
+
+  local_yrange <- local_ymax - local_ymin
+
+  # in case values are extremely similar
+  if (is.na(local_yrange) || local_yrange == 0) {
+    local_yrange <- max(abs(local_ymax), 1) * 0.1
+  }
+
+  pair_top <- max(sum_df$mean_signal + sum_df$sem_signal, na.rm = TRUE)
+
+  label_y <- local_ymax + 0.08 * local_yrange
+  sig_y   <- pair_top   + 0.12 * local_yrange
+  y_upper <- max(label_y, sig_y) + 0.06 * local_yrange
+# ---- Plotting Figure 7G ----
+  
+  p <- ggplot(sum_df, aes(x = `Construct identity`, y = mean_signal)) +
+    geom_col(
+      fill = "#DE647D",
+      color = "black",
+      width = 0.7
+    ) +
+    geom_errorbar(
+      aes(
+        ymin = mean_signal - sem_signal,
+        ymax = mean_signal + sem_signal
+      ),
+      width = 0.2,
+      linewidth = 0.5
+    ) +
+    geom_jitter(
+      data = raw_df,
+      aes(x = `Construct identity`, y = `P2 Median ECD-A`),
+      width = 0.15,
+      size = 1.8,
+      alpha = 0.75,
+      inherit.aes = FALSE
+    ) +
+    geom_text(
+      aes(y = label_y, label = splice_label),
+      size = 5
+    ) +
+    geom_signif(
+      annotations = sig_label,
+      xmin = 1,
+      xmax = 2,
+      y_position = sig_y,
+      tip_length = 0.01,
+      textsize = 5,
+      color = "black",
+      vjust = 0.3
+    ) +
+    scale_x_discrete(expand = expansion(add = 0.5)) +
+    scale_y_continuous(
+      limits = c(0, y_upper),
+      expand = expansion(mult = c(0.02, 0))
+    ) +
+    labs(
+      x = NULL,
+      y = if (show_y_title) "Median LDLR-mCherry" else NULL,
+      title = title_text
+    ) +
+    theme_classic() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1, size = 14, colour = "black"),
+      axis.text.y = element_text(size = 14, colour = "black"),
+      axis.title.y = element_text(size = 16, colour = "black", margin = margin(r = 8)),
+      axis.ticks = element_line(linewidth = 0.4, colour = "black"),
+      axis.line = element_line(linewidth = 0.5, colour = "black"),
+      legend.position = "none",
+      plot.title = element_text(size = 16, hjust = 0.5),
+      plot.margin = margin(6, 12, 24, 12)
+    ) +
+    coord_cartesian(clip = "off")
+
+  if (!show_y_title) {
+    p <- p + theme(
+      axis.title.y = element_blank()
+    )
+  }
+
+  p
+}
+
+#5) Build the two plots
+
+plot_in14 <- make_plot(
+  sum_df = sum_in14,
+  raw_df = df_in14,
+  sig_label = sig_in14,
+  title_text = "Intron 14",
+  show_y_title = TRUE
+)
+
+plot_in15 <- make_plot(
+  sum_df = sum_in15,
+  raw_df = df_in15,
+  sig_label = sig_in15,
+  title_text = "Intron 15",
+  show_y_title = TRUE
+)
+
+#6) Combine
+fig_7G <- plot_in14 / plot_in15
+
+#Printing out figure panel 
+fig_7G
+
+ggsave(
+  filename = file.path(here("output", "figure_7"), "Fig7G.pdf"),
+  plot     = fig_7G,
+  width    = 5,
+  height   = 10,
+  units    = "in",
+  dpi = 600
+)
+```
+```{r fig_7G statistics}
+#Compute raw p-values
+p_in14 <- t.test(
+  `P2 Median ECD-A` ~ `Construct identity`,
+  data = fig_7G_mCherry_df %>%
+    filter(`Construct identity` %in% c("LDLR-In14", "LDLR-In14-T713T (p3A>G)"))
+)$p.value
+
+p_in15 <- t.test(
+  `P2 Median ECD-A` ~ `Construct identity`,
+  data = fig_7G_mCherry_df %>%
+    filter(`Construct identity` %in% c("LDLR-In15", "LDLR-In15-Q770Q (p3A>G)"))
+)$p.value
+
+#Holm correction for 2 comparisons
+pvals_adj <- p.adjust(c(p_in14, p_in15), method = "holm")
+
+pvals_adj
+```
+
+```{r printing_fig_7CDEF}
+
+fig_7CDEF <- ((fig_7C | fig_7D) / (fig_7E | fig_7F))
+
+ggsave(
+  filename = file.path(here("output", "figure_7"), "Fig7CDEF.pdf"),
+  plot     = fig_7CDEF,
+  width    = 10,
+  height   = 10,
+  units    = "in",
+  dpi = 600
+)
+```

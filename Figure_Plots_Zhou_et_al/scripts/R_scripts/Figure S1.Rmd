@@ -1,0 +1,140 @@
+---
+title: "Figure S1"
+author: "Phil Zhou"
+date: "2025-11-18"
+output: html_document
+---
+
+```{r load_packages}
+library(svglite)
+library(readr)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(ggrepel)
+library(readxl)
+library(tidyverse)
+library(pheatmap)
+library(viridis)
+library(gplots)
+library(zoo)
+library(patchwork)
+library(corrplot)
+library(ggpubr)
+library(tidyr)
+library(here)
+```
+
+```{r load_dfs}
+fig_S1B_df <- read.csv(here("data", "LDLR_Ex4","Histogram of FigS1_PRIDICT_input.csv"))
+
+fig_S1C_df <- read.delim(
+  here("data", "Key_gene_expression", "FigS1C_key gene expression (log2(TPM+1)).csv")
+)
+```
+
+```{r fig_S1B}
+fig_S1B <- ggplot(fig_S1B_df, aes(x = Bin.Center, y = X..values)) +
+  geom_bar(stat = "identity", fill = "black", color = "black") +
+  labs(
+    x = "Number of (variant, PAM) pairs",
+    y = "Number of codon swaps"
+  ) +
+  theme_classic() +
+  theme(
+    axis.title.x = element_text(size = 18, color = "black"),
+    axis.title.y = element_text(size = 18, color = "black"),
+    axis.text.x  = element_text(size = 14, color = "black"),
+    axis.text.y  = element_text(size = 14, color = "black")
+  ) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0))
+
+#print out figure panel
+fig_S1B
+
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_S1"), "Fig_S1B.pdf"),
+  plot     = fig_S1B,
+  width    = 5,
+  height   = 5,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r fig_S1C}
+# ---- 1) Custom theme ----
+panel_theme <- theme_classic() +
+  theme(
+    legend.position = "none",
+    plot.margin = margin(6, 6, 6, 6),
+    axis.title.x = element_text(size = 18, color = "black"),
+    axis.title.y = element_text(size = 18, color = "black"),
+    axis.text.x  = element_text(size = 16, color = "black"),
+    axis.text.y  = element_text(size = 16, color = "black"),
+    strip.text = element_text(size = 18, color = "black")
+  )
+
+# ---- 2) Format data ----
+df_long <- fig_S1C_df %>%
+  rename(
+    cell_line = Cell.line,
+    expression = Expression
+  ) %>%
+  mutate(
+    Gene = factor(Gene, levels = c("LDLR", "MYLIP", "PCSK9")),
+    cell_line = factor(cell_line, levels = c("HCT116", "HeLa", "HepG2"))
+  )
+
+# ---- 3) Plot ----
+fig_S1C <- ggplot(df_long, aes(x = cell_line, y = expression, fill = Gene)) +
+  geom_bar(stat = "identity", width = 0.7, color = "black", linewidth = 0.5) +
+  
+  facet_grid(~ Gene, scales = "free_x", space = "free_x") +
+
+  
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
+  
+  labs(
+    x = NULL,
+    y = expression(atop("Gene expression", Log[2](TPM + 1)))
+  ) +
+  
+  panel_theme + 
+  theme(
+    strip.background = element_blank(),
+    axis.text.x = element_text(angle = 90, vjust = 0.5),
+    legend.position = "right"   # override panel_theme (since it set "none")
+  )
+
+#print out figure panel
+fig_S1C
+
+# ---- 4) Save ----
+ggsave(
+  filename = file.path(here("output", "figure_S1"), "FigS1C.pdf"),
+  plot     = fig_S1C,
+  width    = 10,
+  height   = 5,
+  units    = "in",
+  create.dir = TRUE,
+  dpi = 600
+)
+```
+
+```{r printing_fig_S1BC}
+fig_S1BC <- fig_S1B / fig_S1C
+
+ggsave(
+  filename = file.path(here("output", "figure_S1"), "FigS1BC.pdf"),
+  plot     = fig_S1BC,
+  width    = 10,
+  height   = 10,
+  units    = "in",
+  create.dir = TRUE,
+  dpi = 600
+)
+```
+

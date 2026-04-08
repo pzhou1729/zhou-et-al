@@ -1,0 +1,246 @@
+---
+title: "Figure S2"
+author: "Phil Zhou"
+date: "2025-11-18"
+output: html_document
+---
+
+```{r load_packages}
+library(svglite)
+library(readr)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(ggrepel)
+library(readxl)
+library(tidyverse)
+library(pheatmap)
+library(viridis)
+library(gplots)
+library(zoo)
+library(patchwork)
+library(corrplot)
+library(ggpubr)
+library(tidyr)
+library(here)
+```
+
+```{r load_dfs}
+#FigS2_Endo vs repo BEAN endo 1.96 only
+endo_repo_BEAN_endo_1.96 <- read.csv(here("data", "LDLR_Ex4", "FigS2_Endo vs repo BEAN endo 1.96 only.csv"))
+
+#FigS2_endogenous RPM violin
+endo_RPM_violin <- read.csv(here("data", "LDLR_Ex4", "FigS2_endogenous RPM violin.csv"))
+
+#FigS2_repo_Missense, syn, stop BEAN
+repo_Missense <- read.csv(here("data", "LDLR_Ex4", "FigS2_repo_Missense, syn, stop BEAN.csv"))
+
+#FigS2_reporter edit frac violin
+reporter_edit_frac_violin <- read.csv(here("data", "LDLR_Ex4", "FigS2_reporter edit frac violin.csv"))
+```
+
+
+```{r fig_S2A}
+fig_S2A <- ggplot(endo_RPM_violin,
+       aes(x = "", y = Endogenous.edit.RPM)) +
+  geom_violin(fill = "steelblue", alpha = 0.6, trim = TRUE) +
+  geom_boxplot(width = 0.1, outlier.shape = NA, alpha = 0.5) +
+  scale_y_continuous(expand = c(0, 0)) +   # <-- removes gap between x-axis and violin
+  theme_classic() +
+  labs(x = NULL, y = "Endogenous variant abundance (RPM)") +
+  theme(
+    axis.text.x  = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_text(size = 20, color = "black"),
+    axis.title.y = element_text(size = 20, color = "black"),
+    axis.text.y  = element_text(size = 18, color = "black")
+    )
+
+#print out figure panel
+fig_S2A
+
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_S2"), "FigS2A.pdf"),
+  plot     = fig_S2A,
+  width    = 6,
+  height   = 6,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r fig_S2B}
+fig_S2B <- ggplot(reporter_edit_frac_violin,
+       aes(x = "", y = Mean.reporter.edit.fraction)) +
+  geom_violin(fill = "steelblue", alpha = 0.6, trim = TRUE) +
+  geom_boxplot(width = 0.1, outlier.shape = NA, alpha = 0.5) +
+  scale_y_continuous(expand = c(0, 0)) +   # <-- removes gap between x-axis and violin
+  theme_classic() +
+  labs(x = NULL, y = "pegRNA reporter edit fraction") +
+  theme(
+    axis.text.x  = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_text(size = 20, color = "black"),
+    axis.title.y = element_text(size = 20, color = "black"),
+    axis.text.y  = element_text(size = 18, color = "black")
+    )
+
+#print out figure panel
+fig_S2B
+
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_S2"), "FigS2B.pdf"),
+  plot     = fig_S2B,
+  width    = 6,
+  height   = 6,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r fig_S2C}
+# ---- 1) Long dataframe ---- 
+df_long <- repo_Missense %>%
+  pivot_longer(
+    cols = c(Synonymous, Missense, Stop),
+    names_to  = "Variant",
+    values_to = "Score"
+  ) %>%
+  mutate(
+    Variant = factor(Variant, levels = c("Synonymous", "Missense", "Stop"))
+  ) %>%
+  filter(!is.na(Score), is.finite(Score))
+
+# ---- 2) Comparisons ---- 
+comparisons_S2C <- list(
+  c("Synonymous", "Missense"),
+  c("Missense",   "Stop"),
+  c("Synonymous", "Stop")
+)
+
+# ---- 3) Y scaling (ONLY for stats placement, not plot limits) ---- 
+y_max <- max(df_long$Score, na.rm = TRUE)
+y_range <- diff(range(df_long$Score, na.rm = TRUE))
+if (y_range == 0) y_range <- 1
+
+#  ---- 4) Stats (Holm) ---- 
+stat_test_S2C <- compare_means(
+  Score ~ Variant,
+  data = df_long,
+  method = "t.test",
+  method.args = list(var.equal = FALSE),
+  comparisons = comparisons_S2C,
+  p.adjust.method = "holm"
+) %>%
+  mutate(
+    p.signif = case_when(
+      p.adj <= 1e-4 ~ "****",
+      p.adj <= 1e-3 ~ "***",
+      p.adj <= 1e-2 ~ "**",
+      p.adj <= 0.05 ~ "*",
+      TRUE ~ "n.s."
+    ),
+    y.position = y_max + c(0.05, 0.12, 0.19) * y_range
+  )
+
+#  ---- 5) Plot ---- 
+fig_S2C <- ggplot(df_long, aes(x = Variant, y = Score, fill = Variant)) +
+  geom_point(
+    aes(color = Variant),   # keep local mapping like original
+    position = position_jitter(width = 0.05, height = 0),
+    size = 1.2,
+    alpha = 0.5
+  ) +
+  geom_hline(yintercept = 0, linetype = "dotted", color = "black", size = 0.6) +
+  geom_violin(alpha = 0.5) +   # removed width + color override
+  geom_boxplot(width = 0.15, outlier.shape = NA, alpha = 0.7, color = "black") +
+  stat_pvalue_manual(
+    stat_test_S2C,
+    label = "p.signif",
+    xmin = "group1",
+    xmax = "group2",
+    y.position = "y.position",
+    inherit.aes = FALSE,
+    hide.ns = TRUE,
+    tip.length = 0.01,
+    size = 6,
+    bracket.size = 0.6,
+    color = "black"
+  ) +
+  theme_classic() +
+  labs(x = NULL, y = "Reporter LDLR137-219 BEAN z score") +
+  theme(
+    axis.title.x = element_text(size = 20, color = "black"),
+    axis.title.y = element_text(size = 20, color = "black"),
+    axis.text.x  = element_text(size = 18, color = "black"),
+    axis.text.y  = element_text(size = 18, color = "black"),
+    legend.position = "none"
+  )
+
+#print out figure panel
+fig_S2C
+
+# stats output
+stat_test_S2C
+
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_S2"), "FigS2C.pdf"),
+  plot     = fig_S2C,
+  width    = 6,
+  height   = 6,
+  units    = "in",
+  dpi = 600
+)
+```
+
+
+```{r fig_S2D}
+#Endogenous vs. Reporter BEAN significant only fig_S2_
+
+fig_S2D <- ggplot(endo_repo_BEAN_endo_1.96, aes(x=Endo.BEAN.mu_Z_adj_SD.1, y=Repo.BEAN.mu_Z_adj.SD.0.45)) + geom_point(size = 2, alpha = 0.7, shape = 16) + theme_classic() + labs(y= "Reporter LDLR137-219 BEAN z score", x = "Endogenous LDLR137-219 BEAN z score") +
+  theme_classic() +
+  theme(
+    axis.title.x = element_text(size = 20, color = "black"),
+    axis.title.y = element_text(size = 20, color = "black"),
+    axis.text.x  = element_text(size = 18, color = "black"),
+    axis.text.y  = element_text(size = 18, color = "black"),
+    legend.position = "none"
+  ) + xlim(0, NA) +
+  scale_x_continuous(expand = c(0, 0)) +   # no gap at left/right
+  scale_y_continuous(expand = c(0, 0))     # no gap at bottom/top
+
+#print out figure panel
+fig_S2D
+
+# ---- Calculating correlations for Figure S2D ----
+cor.test(endo_repo_BEAN_endo_1.96$Endo.BEAN.mu_Z_adj_SD.1, endo_repo_BEAN_endo_1.96$Repo.BEAN.mu_Z_adj.SD.0.45, method = "pearson")
+cor.test(endo_repo_BEAN_endo_1.96$Endo.BEAN.mu_Z_adj_SD.1, endo_repo_BEAN_endo_1.96$Repo.BEAN.mu_Z_adj.SD.0.45, method = "spearman")
+
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_S2"), "FigS2D.pdf"),
+  plot     = fig_S2D,
+  width    = 6,
+  height   = 6,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r printing_fig_S2}
+fig_S2 <- (fig_S2A + fig_S2B) / (fig_S2C + fig_S2D) +
+  plot_annotation() &
+  theme(plot.margin = margin(10, 10, 20, 10))   # bottom margin increased
+
+ggsave(
+  filename = file.path(here("output", "figure_S2"), "Fig_S2.pdf"),
+  plot     = fig_S2,
+  width    = 12,
+  height   = 12,
+  units    = "in",
+  dpi = 600
+)
+```

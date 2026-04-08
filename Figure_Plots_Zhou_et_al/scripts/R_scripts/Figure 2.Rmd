@@ -1,0 +1,390 @@
+---
+title: "Figure 2"
+author: "Phil Zhou"
+date: "2025-11-16"
+output: html_document
+---
+
+```{r load_packages}
+library(svglite)
+library(readr)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(ggrepel)
+library(readxl)
+library(tidyverse)
+library(pheatmap)
+library(viridis)
+library(gplots)
+library(zoo)
+library(patchwork)
+library(corrplot)
+library(ggpubr)
+library(tidyr)
+library(here)
+```
+
+```{r load_dfs}
+#Load in the data
+BEAN_FUSE_FL <- read_csv(
+  here("data", "0326_LDLR_mastersheet.csv")
+)
+
+fig_2A_df <- read.csv(
+  here("data", "LDLR_Ex4", "Fig2A_endo missense syn stop BEAN.csv")
+)
+
+fig_2B_df <- read.csv(
+  here("data", "LDLR_Ex4", "Fig2B_Endo vs repo BEAN.csv")
+)
+```
+
+```{r shared_theme}
+#setting up shared aesthetics for all scatterplots
+panel_theme <- theme_classic() +
+  theme(
+    legend.position = "none",
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 0.8),
+    plot.margin = margin(6, 6, 6, 6),
+    axis.title.x = element_text(size = 18, color = "black"),
+    axis.title.y = element_text(size = 18, color = "black"),
+    axis.text.x  = element_text(size = 16, color = "black"),
+    axis.text.y  = element_text(size = 16, color = "black")
+  )
+```
+
+```{r fig_2A}
+# ---- statistical testing for Figure 2A ----
+
+#convert the data frame into long form: one column titled "Variant,
+#one column titled "Score". 
+#This allows for statistical testing comparing the three variant categories (synonymous, missense, stop) to each other
+
+df_long <- fig_2A_df %>%
+  pivot_longer(
+    cols = c(Missense, Synonymous, Stop),
+    names_to  = "Variant",
+    values_to = "Score"
+  ) %>%
+  mutate(
+    Variant = factor(Variant, levels = c("Synonymous", "Missense", "Stop"))
+  ) %>%
+  filter(!is.na(Score), is.finite(Score))
+
+# Pairwise Welch t-tests with Holm correction
+t_test <- compare_means(
+  Score ~ Variant,
+  data = df_long,
+  method = "t.test",
+  comparisons = comparisons,
+  p.adjust.method = "holm"
+)
+
+# Wilcoxon tests with Holm correction
+wilcox_test <- compare_means(
+  Score ~ Variant,
+  data = df_long,
+  method = "wilcox.test",
+  comparisons = comparisons,
+  p.adjust.method = "holm"
+)
+
+#set up labels for adjusted p-value of statistical test 
+t_test <- t_test %>%
+  mutate(
+    p.signif = case_when(
+      p.adj <= 0.0001 ~ "****",
+      p.adj <= 0.001  ~ "***",
+      p.adj <= 0.01   ~ "**",
+      p.adj <= 0.05   ~ "*",
+      TRUE            ~ "n.s."
+    ),
+    y.position = c(
+      ymax + 0.06 * yrange,
+      ymax + 0.13 * yrange,
+      ymax + 0.20 * yrange
+    )
+  )
+
+# ---- Plotting Figure 2A ----
+
+# Dynamic y positions
+ymax   <- max(df_long$Score, na.rm = TRUE)
+ymin   <- min(df_long$Score, na.rm = TRUE)
+yrange <- ymax - ymin
+
+fig_2A <- ggplot(df_long, aes(x = Variant, y = Score, fill = Variant)) +
+  geom_point( #Plot individual data points
+    aes(color = Variant),
+    position = position_jitter(width = 0.05, height = 0),
+    size = 1.2, alpha = 0.5
+  ) +
+  geom_violin(alpha = 0.5, trim = FALSE) + #Violin plot
+  geom_boxplot(width = 0.15, outlier.shape = NA, alpha = 0.7, color = "black") + #Boxplot
+  labs(x = NULL, y = "Endogenous LDLR137-219 BEAN z score") +
+  panel_theme +
+  stat_pvalue_manual(
+    t_test,
+    label = "p.signif",
+    xmin = "group1",
+    xmax = "group2",
+    y.position = "y.position",
+    inherit.aes = FALSE,
+    hide.ns = TRUE,
+    tip.length = 0.01
+  ) +
+  coord_cartesian(ylim = c(ymin- 0.10 * yrange, ymax + 0.30 * yrange))
+
+#print out figure panel
+fig_2A
+
+#print out results of statistical test
+t_test
+wilcox_test
+
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_2"), "Fig2A.pdf"),
+  plot     = fig_2A,
+  width    = 6,
+  height   = 6,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r fig_2B}
+#Add label for whether the starting amino acid is a cysteine or not.
+#This is achieved by augmenting the data frame with a new column titled is_cysteine
+#Variants corresponding to cysteine mutants are colored red in the final plot. 
+
+LDLR_exon4_10_23_25 <- read_xlsx(here("data", "LDLR_Ex4", "0923_LDLREx4_endo_BEAN_FUSE_updated.xlsx")) %>%
+  mutate(
+    is_cysteine  = `Starting AA` == "C",
+    `Variant name` = paste0(`Starting AA`, Position_actual, `Mutant AA`)
+  )
+
+# ---- Plotting Figure 2B ----
+fig_2B <- ggplot(LDLR_exon4_10_23_25,
+              aes(x = `0925_endogenous BEANnormal_mu_z`,
+                  y = `0925_reporter BEANmixturenormal_mu_z`,
+                  color = is_cysteine)) +
+  geom_point(size = 2, alpha = 0.7, shape = 16) +
+  scale_color_manual(values = c(`TRUE` = "red", `FALSE` = "black")) +
+  labs(
+    y = "Reporter LDLR137-219 BEAN z score",
+    x = "Endogenous LDLR137-219 BEAN z score",
+    color = NULL
+  ) +
+  panel_theme
+
+#Printing out figure panel 
+fig_2B
+
+# ---- Calculating correlations for Figure 2B ----
+
+#Pearson correlation
+cor(LDLR_exon4_10_23_25$`0925_reporter BEANmixturenormal_mu_z`, LDLR_exon4_10_23_25$`0925_endogenous BEANnormal_mu_z`, method = "pearson", "complete.obs")
+#Spearman correlation
+cor(LDLR_exon4_10_23_25$`0925_reporter BEANmixturenormal_mu_z`, LDLR_exon4_10_23_25$`0925_endogenous BEANnormal_mu_z`, method = "spearman", "complete.obs")
+
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_2"), "Fig2B.pdf"),
+  plot     = fig_2B,
+  width    = 6,
+  height   = 6,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r fig_2C}
+#Add label for whether the starting amino acid is a cysteine or not
+#Variants corresponding to cysteine mutants are colored red
+
+BEAN_FUSE_FL <- BEAN_FUSE_FL %>%
+  mutate(
+    is_cysteine  = `Starting AA` == "C",
+  )
+
+# ---- Plotting Figure 2C ----
+fig_2C <- ggplot(BEAN_FUSE_FL,
+              aes(x = `LDLR137-219 BEAN mu_Z`,
+                  y = `Differential PFAM`,
+                  color = is_cysteine)) +
+  geom_point(size = 2, alpha = 0.7, shape = 16) +
+  scale_color_manual(values = c(`TRUE` = "red", `FALSE` = "black")) +
+  labs(
+    y = "Differential PFAM",
+    x = "Endogenous LDLR137-219 BEAN z score",
+    color = NULL
+  ) +
+  panel_theme
+
+# ---- Calculating correlations for Figure 2C ----
+#Pearson correlation
+cor(BEAN_FUSE_FL$`Differential PFAM`, BEAN_FUSE_FL$`LDLR137-219 BEAN mu_Z`, method = "pearson", "complete.obs")
+#Spearman correlation
+cor(BEAN_FUSE_FL$`Differential PFAM`, BEAN_FUSE_FL$`LDLR137-219 BEAN mu_Z`, method = "spearman", "complete.obs")
+
+#Printing out figure panel 
+fig_2C
+
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_2"), "Fig2C.pdf"),
+  plot     = fig_2C,
+  width    = 6,
+  height   = 6,
+  units    = "in",
+  dpi = 600
+)
+```
+
+
+```{r fig_2D}
+# ---- Plotting Figure 2D ----
+fig_2D <- ggplot(BEAN_FUSE_FL,
+              aes(x = `LDLR137-219 BEAN mu_Z`,
+                  y = `AlphaMissense`,
+                  color = is_cysteine)) +
+  geom_point(size = 2, alpha = 0.7, shape = 16) +
+  scale_color_manual(values = c(`TRUE` = "red", `FALSE` = "black")) +
+  labs(
+    y = "AlphaMissense",
+    x = "Endogenous LDLR137-219 BEAN z score",
+    color = NULL
+  ) +
+  panel_theme
+
+# ---- Calculating correlations for Figure 2D ----
+#Pearson correlation
+cor(BEAN_FUSE_FL$`AlphaMissense`, BEAN_FUSE_FL$`LDLR137-219 BEAN mu_Z`, method = "pearson", "complete.obs")
+#Spearman correlation
+cor(BEAN_FUSE_FL$`AlphaMissense`, BEAN_FUSE_FL$`LDLR137-219 BEAN mu_Z`, method = "spearman", "complete.obs")
+
+#Printing out figure panel 
+fig_2D
+
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_2"), "Fig2D.pdf"),
+  plot     = fig_2D,
+  width    = 6,
+  height   = 6,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r fig_2E}
+# ---- Plotting Figure 2E ----
+fig_2E <- ggplot(BEAN_FUSE_FL,
+              aes(x = `LDLR137-219 FUSE_score normalized`,
+                  y = `Differential PFAM`,
+                  color = is_cysteine)) +
+  geom_point(size = 2, alpha = 0.7, shape = 16) +
+  scale_color_manual(values = c(`TRUE` = "red", `FALSE` = "black")) +
+  labs(
+    y = "Differential PFAM",
+    x = "Endogenous LDLR137-219 FUSE score",
+    color = NULL
+  ) +
+  panel_theme
+
+# ---- Calculating correlations for Figure 2E ----
+#Pearson correlation
+cor(BEAN_FUSE_FL$`LDLR137-219 FUSE_score normalized`, BEAN_FUSE_FL$`Differential PFAM`, method = "pearson", "complete.obs")
+#Spearman correlation
+cor(BEAN_FUSE_FL$`LDLR137-219 FUSE_score normalized`, BEAN_FUSE_FL$`Differential PFAM`, method = "spearman", "complete.obs")
+
+#Printing out figure panel 
+fig_2E
+
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_2"), "Fig2E.pdf"),
+  plot     = fig_2E,
+  width    = 6,
+  height   = 6,
+  units    = "in",
+  dpi = 600
+)
+```
+
+
+
+```{r fig_2F}
+# ---- Plotting Figure 2F ----
+fig_2F <- ggplot(BEAN_FUSE_FL,
+              aes(x = `LDLR137-219 FUSE_score normalized`,
+                  y = `AlphaMissense`,
+                  color = is_cysteine)) +
+  geom_point(size = 2, alpha = 0.7, shape = 16) +
+  scale_color_manual(values = c(`TRUE` = "red", `FALSE` = "black")) +
+  labs(
+    y = "AlphaMissense",
+    x = "Endogenous LDLR137-219 FUSE score",
+    color = NULL
+  ) +
+  panel_theme
+
+# ---- Calculating correlations for Figure 2F ----
+#Pearson correlation
+cor(BEAN_FUSE_FL$`LDLR137-219 FUSE_score normalized`, BEAN_FUSE_FL$`AlphaMissense`, method = "pearson", "complete.obs")
+#Spearman correlation
+cor(BEAN_FUSE_FL$`LDLR137-219 FUSE_score normalized`, BEAN_FUSE_FL$`AlphaMissense`, method = "spearman", "complete.obs")
+
+#Printing out figure panel 
+fig_2F
+
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_2"), "Fig2F.pdf"),
+  plot     = fig_2F,
+  width    = 6,
+  height   = 6,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r printing_fig, warning=FALSE, message=FALSE}
+
+#Combine the figure panels together in a 2x3 grid using patchwork
+#Control gutter sizes (relative)
+hgap <- 0.15   # horizontal gap between columns (relative width of spacer col)
+vgap <- 0.15   # vertical gap between rows    (relative height of spacer row)
+
+#rebuild grid
+row1 <- fig_2A | plot_spacer() | fig_2B
+row1 <- row1 + plot_layout(widths = c(1, hgap, 1))
+
+row2 <- fig_2C | plot_spacer() | fig_2D
+row2 <- row2 + plot_layout(widths = c(1, hgap, 1))
+
+row3 <- fig_2E | plot_spacer() | fig_2F
+row3 <- row3 + plot_layout(widths = c(1, hgap, 1))
+
+fig_2 <- row1 / plot_spacer() / row2 / plot_spacer() / row3 +
+  plot_layout(heights = c(1, vgap, 1, vgap, 1)) &
+  theme(plot.margin = margin(6, 6, 6, 6))
+
+#Printing out figure panel 
+fig_2
+
+#save the figure panel 2A-F as a high resolution .pdf. 
+#This is essentially the full figure, with some aesthetic adjustments made in post
+ggsave(
+  filename = file.path(here("output", "figure_2"), "Fig2.pdf"),
+  plot     = fig_2,
+  width    = 18,
+  height   = 18,
+  units    = "in",
+  dpi = 600
+)
+```
+
+

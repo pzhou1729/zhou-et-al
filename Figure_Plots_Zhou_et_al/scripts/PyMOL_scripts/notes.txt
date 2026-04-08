@@ -1,0 +1,21 @@
+Here are some notes on the files in each directory.
+
+Figure 6A
+9bde_LDLR_APOB_only.pse is the output from Arpeggio. 
+9bde is the PDB id for the LDLR-APOB costructure, subset to the beta-belt of APOB and the class A repeats of LDLR. 
+
+fig_6A_script.pml contains all of the information to configure the aesthetics of the predicted interatom contacts and position the camera. 
+
+LDLR_APOB.png is a copy of the final image used in Figure 6A.
+
+9bde_LDLR_APOB_only_final.pse is 9bde_LDLR_APOB_only.pse with the .pml script run on it. 
+
+Figure 6B
+
+APOB_LDLR_S213_wt.pse, etc. are all outputs from Arpeggio.
+
+The .pml scripts are for adjusting the aesthetics of interatom contacts and positioning the camera. 
+
+All files with _final are the corresponding .pse file with the .pml file run on it. 
+
+The images are the final ones used in the generation of figure 6B. 

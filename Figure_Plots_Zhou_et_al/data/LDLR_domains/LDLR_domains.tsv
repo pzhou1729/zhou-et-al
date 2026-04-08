@@ -1,0 +1,18 @@
+Domain AA start	Domain AA end	LDLR domain (Uniprot)
+25	65	LDLR class A 1
+66	106	LDLR class A 2
+107	145	LDLR class A 3
+146	186	LDLR class A 4
+195	233	LDLR class A 5
+234	272	LDLR class A 6
+274	313	LDLR class A 7
+314	353	EGF-like 1
+354	393	EGF-like 2, Ca2+ binding
+397	438	LDLR class B 1
+439	485	LDLR class B 2
+486	528	LDLR class B 3
+529	572	LDLR class B 4
+573	615	LDLR class B 5
+616	658	LDLR class B 6
+663	712	EGF-like 3
+721	768	Clustered O-linked oligosaccharides

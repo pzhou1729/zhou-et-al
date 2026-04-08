@@ -1,0 +1,432 @@
+---
+title: "Figure S6"
+author: "Phil Zhou"
+date: "2025-11-18"
+output: html_document
+---
+
+```{r load_packages}
+library(svglite)
+library(readr)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(ggrepel)
+library(readxl)
+library(tidyverse)
+library(pheatmap)
+library(viridis)
+library(gplots)
+library(zoo)
+library(patchwork)
+library(corrplot)
+library(ggpubr)
+library(tidyr)
+library(here)
+```
+
+```{r load_dfs}
+GOF_mCherry <- read.csv(
+  here("data", "LDLR_domains", "FigS6_GOF mCherry.csv")
+)
+
+FigS6_Pitstop2_4h_1h <- read.csv(
+  here("data", "LDLR_domains", "FigS6_Pitstop2 4h_1h.csv")
+)
+
+FigS6_Pitstop2_variant_data <- read.csv(
+  here("data", "LDLR_domains", "FigS6_Pitstop2 variant data.csv")
+)
+```
+```{r fig_S6A}
+# Desired order of constructs
+desired_order <- c("wt", "D221Y", "D224H", "S213L", "G219D", "K223E")
+
+# Define fill colors (one per construct)
+fill_colors <- c(
+  "wt"     = "gray60",
+  "D221Y"  = "#DE647D",
+  "D224H"  = "#DE647D",
+  "S213L"  = "steelblue",
+  "G219D"  = "steelblue",
+  "K223E"  = "steelblue"
+)
+
+comparisons <- list(
+  c("wt", "D221Y"),
+  c("wt", "D224H"),
+  c("wt", "S213L"),
+  c("wt", "G219D"),
+  c("wt", "K223E")
+)
+
+df_long <- GOF_mCherry %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "construct",
+    values_to = "value"
+  ) %>%
+  filter(!is.na(value), is.finite(value))
+
+df_summary <- df_long %>%
+  group_by(construct) %>%
+  summarise(
+    n    = sum(!is.na(value)),
+    mean = mean(value, na.rm = TRUE),
+    sd   = sd(value, na.rm = TRUE),
+    sem  = sd / sqrt(n),
+    .groups = "drop"
+  )
+
+# Make sure construct is treated as a factor with that exact order
+df_summary$construct <- factor(df_summary$construct, levels = desired_order)
+df_long$construct    <- factor(df_long$construct, levels = desired_order)
+
+# Y-axis scaling for stats placement
+y_max_bar <- max(df_summary$mean + df_summary$sem, na.rm = TRUE)
+y_min_raw <- min(df_long$value, na.rm = TRUE)
+y_range   <- y_max_bar - y_min_raw
+if (y_range == 0) y_range <- 1
+
+# Holm-corrected Welch t-tests
+stat_test_S6A <- compare_means(
+  value ~ construct,
+  data = df_long,
+  method = "t.test",
+  method.args = list(var.equal = FALSE),
+  ref.group = "wt",
+  p.adjust.method = "holm"
+) %>%
+  filter(group1 == "wt") %>%
+  arrange(factor(group2, levels = desired_order)) %>%   # ensures correct order
+  mutate(
+    p.signif = case_when(
+      p.adj <= 1e-4 ~ "****",
+      p.adj <= 1e-3 ~ "***",
+      p.adj <= 1e-2 ~ "**",
+      p.adj <= 0.05 ~ "*",
+      TRUE ~ "n.s."
+    ),
+    y.position = y_max_bar + c(0.08, 0.17, 0.26, 0.35, 0.44) * y_range
+  )
+
+# base: use raw data
+fig_S6A <- ggplot(df_long, aes(x = construct, y = value, fill = construct)) +
+  geom_col(
+    data = df_summary,
+    aes(x = construct, y = mean, fill = construct),
+    color = "black",
+    width = 0.6,
+    inherit.aes = FALSE
+  ) +
+  geom_errorbar(
+    data = df_summary,
+    aes(x = construct, ymin = mean - sem, ymax = mean + sem),
+    width = 0.2,
+    linewidth = 0.4,
+    inherit.aes = FALSE
+  ) +
+  geom_jitter(width = 0.15, size = 1.6, alpha = 0.7) +
+  scale_fill_manual(values = fill_colors) +
+  stat_pvalue_manual(
+    stat_test_S6A,
+    label = "p.signif",
+    xmin = "group1",
+    xmax = "group2",
+    y.position = "y.position",
+    inherit.aes = FALSE,
+    tip.length = 0.01,
+    bracket.size = 0.6,
+    size = 5,
+    color = "black"
+  ) +
+  theme_classic() +
+  labs(
+    x = NULL,
+    y = "MEAN LDLR-mCherry fluorescence\n(LFC vs. LDLR-wt)"
+  ) +
+  theme(
+    axis.text.x  = element_text(angle = 45, hjust = 1, size = 18, color = "black"),
+    axis.text.y  = element_text(size = 18, color = "black"),
+    axis.title.y = element_text(size = 20, color = "black"),
+    legend.position = "none"
+  ) +
+  expand_limits(y = max(stat_test_S6A$y.position) * 1.05)
+
+#print out figure panel
+fig_S6A
+
+stat_test_S6A
+
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_S6"), "FigS6A.pdf"),
+  plot     = fig_S6A,
+  width    = 6,
+  height   = 6,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r fig_S6B}
+df_long <- GOF_mCherry %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "construct",
+    values_to = "value"
+  )
+
+pairwise.t.test(
+  x = df_long$value,
+  g = df_long$construct,
+  pool.sd = FALSE,
+  paired = FALSE,
+  p.adjust.method = "none"
+)
+
+# Desired order of constructs
+desired_order <- c("DMSO", "Pitstop2")
+
+# Define fill colors (one per construct)
+fill_colors <- c(
+  "DMSO"     = "gray60",
+  "Pitstop2"  = "#8dfa87"
+)
+
+comparisons <- list(
+  c("DMSO" , "Pitstop2")
+)
+
+df_long <- FigS6_Pitstop2_4h_1h %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "construct",
+    values_to = "value"
+  )
+
+df_summary <- df_long %>%
+  group_by(construct) %>%
+  summarise(
+    n    = sum(!is.na(value)),
+    mean = mean(value, na.rm = TRUE),
+    sd   = sd(value, na.rm = TRUE),
+    sem  = sd / sqrt(n),
+    .groups = "drop"
+  )
+
+# base: use raw data
+fig_S6B <- ggplot(df_long, aes(x = construct, y = value, fill = construct)) +
+  # bar (use summary df)
+  geom_col(
+    data = df_summary,
+    aes(x = construct, y = mean, fill = construct),
+    color = "black",
+    width = 0.6,
+    inherit.aes = FALSE
+  ) +
+  # error bars (also from summary)
+  geom_errorbar(
+    data = df_summary,
+    aes(x = construct, ymin = mean - sem, ymax = mean + sem),
+    width = 0.2,
+    linewidth = 0.4,
+    inherit.aes = FALSE
+  ) +
+  # jitter (from long, so inherits)
+  geom_jitter(width = 0.15, size = 1.6, alpha = 0.7) +
+  # your colors
+  scale_fill_manual(values = fill_colors) +
+  # stats (now the plot’s main data has y = value, so this is happy)
+  stat_compare_means(
+    comparisons = comparisons,
+    method = "t.test",
+    label = "p.signif", symnum.args = list(cutpoints = c(0, 0.0001, 0.001, 0.01, 0.05, Inf), symbols = c("****", "***", "**", "*", "n.s."))
+  ) +
+  theme_classic() +
+  labs(
+  x = NULL,
+  y = "Change in LDL uptake\n(4 hr/1 hr treatment LFC)"
+) +
+  theme(
+    axis.text.x  = element_text(angle = 45, hjust = 1, size = 18, color = "black"),
+    axis.text.y  = element_text(size = 18, color = "black"),
+    axis.title.y = element_text(size = 20, color = "black"),
+    legend.position = "none"
+  ) +
+  expand_limits(y = max(df_summary$mean + df_summary$sem) * 1.2)
+
+#print out figure panel
+fig_S6B
+
+pairwise.t.test(
+  x = df_long$value,
+  g = df_long$construct,
+  pool.sd = FALSE,
+  paired = FALSE,
+  p.adjust.method = "none"
+)
+
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_S6"), "FigS6B.pdf"),
+  plot     = fig_S6B,
+  width    = 6,
+  height   = 4,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r fig_S6C}
+# Desired order of constructs
+desired_order <- c("wt", "D221Y", "D224H", "S213L", "G219D", "K223E")
+
+# Define fill colors
+fill_colors <- c(
+  "wt"     = "gray60",
+  "D221Y"  = "#DE647D",
+  "D224H"  = "#DE647D",
+  "S213L"  = "steelblue",
+  "G219D"  = "steelblue",
+  "K223E"  = "steelblue"
+)
+
+comparisons <- list(
+  c("wt", "D221Y"),
+  c("wt", "D224H"),
+  c("wt", "S213L"),
+  c("wt", "G219D"),
+  c("wt", "K223E")
+)
+
+df_long <- FigS6_Pitstop2_variant_data %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "construct",
+    values_to = "value"
+  ) %>%
+  mutate(construct = factor(construct, levels = desired_order))
+
+df_summary <- df_long %>%
+  group_by(construct) %>%
+  summarise(
+    n    = sum(!is.na(value)),
+    mean = mean(value, na.rm = TRUE),
+    sd   = sd(value, na.rm = TRUE),
+    sem  = sd / sqrt(n),
+    .groups = "drop"
+  ) %>%
+  mutate(construct = factor(construct, levels = desired_order))
+
+# ---- 1) Run only the 5 desired Welch t-tests ----
+stat_test <- map_dfr(comparisons, \(comp) {
+  g1 <- comp[1]
+  g2 <- comp[2]
+
+  x1 <- df_long %>% filter(construct == g1) %>% pull(value)
+  x2 <- df_long %>% filter(construct == g2) %>% pull(value)
+
+  tt <- t.test(x1, x2, var.equal = FALSE)
+
+  tibble(
+    group1 = g1,
+    group2 = g2,
+    p = tt$p.value
+  )
+})
+
+# ---- 2) Holm correction across those 5 tests ---- 
+stat_test <- stat_test %>%
+  mutate(
+    p.adj = p.adjust(p, method = "holm"),
+    p.signif = case_when(
+      p.adj <= 0.0001 ~ "****",
+      p.adj <= 0.001  ~ "***",
+      p.adj <= 0.01   ~ "**",
+      p.adj <= 0.05   ~ "*",
+      TRUE            ~ "n.s."
+    )
+  )
+
+stat_test
+
+# ---- 3) Add y positions for annotation ----
+
+y_base  <- max(df_summary$mean + df_summary$sem, na.rm = TRUE)
+y_range <- diff(range(df_long$value, na.rm = TRUE))
+
+stat_test <- stat_test %>%
+  mutate(
+    y.position = y_base + c(0.08, 0.16, 0.24, 0.32, 0.40) * y_range
+  )
+
+# ---- 4) Plot using Holm-adjusted significance labels ----
+
+fig_S6C <- ggplot(df_long, aes(x = construct, y = value, fill = construct)) +
+  geom_col(
+    data = df_summary,
+    aes(x = construct, y = mean, fill = construct),
+    color = "black",
+    width = 0.6,
+    inherit.aes = FALSE
+  ) +
+  geom_errorbar(
+    data = df_summary,
+    aes(x = construct, ymin = mean - sem, ymax = mean + sem),
+    width = 0.2,
+    linewidth = 0.4,
+    inherit.aes = FALSE
+  ) +
+  geom_jitter(width = 0.15, size = 1.6, alpha = 0.7) +
+  scale_fill_manual(values = fill_colors) +
+  stat_pvalue_manual(
+  stat_test,
+  label = "p.signif",
+  xmin = "group1",
+  xmax = "group2",
+  y.position = "y.position",
+  tip.length = 0.01,
+  inherit.aes = FALSE
+) +
+  theme_classic() +
+  labs(
+    x = NULL,
+    y = "Mean BODIPY-LDL Delta LFC"
+  ) +
+  theme(
+    axis.text.x  = element_text(angle = 45, hjust = 1, size = 18, color = "black"),
+    axis.text.y  = element_text(size = 18, color = "black"),
+    axis.title.y = element_text(size = 20, color = "black"),
+    legend.position = "none"
+  ) +
+  expand_limits(y = max(stat_test$y.position) + 0.05 * y_range)
+
+#print out figure panel
+fig_S6C
+
+#save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_S6"), "FigS6C.pdf"),
+  plot     = fig_S6C,
+  width    = 6,
+  height   = 6,
+  units    = "in",
+  dpi = 600
+)
+```
+
+```{r printing_fig_S6}
+fig_S6 <- fig_S6A + fig_S6B + fig_S6C
+fig_S6
+
+ggsave(
+  filename = file.path(here("output", "figure_S6"), "Fig_S6.pdf"),
+  plot     = fig_S6,
+  width    = 10,
+  height   = 6,
+  units    = "in",
+  dpi = 600
+)
+```
+
