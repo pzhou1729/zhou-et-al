@@ -7,6 +7,8 @@ Note that the code and data used to generate Figure 4 or S4 are not made availab
 
 `Figure_Plots_Zhou_et_al` contains the data, scripts, and outputs relevant to rendering all of the figures in the paper, which are located in the directories `data`, `scripts`, and `output` respectively. 
 
+`ldlr_fl_analysis` contains scripts for analyzing LDLR-FL raw reporter data (.fastq files).  `reporter_information_reference.csv` is the input file for analysis, `editing_analysis_version1.py` is for analyzing shorter NGS reads, and `editing_analysis_version2.py` is for analyzing longer reads.  
+
 **Description of figures:**  
 
 **Figure 1.** Activity-normalized prime editing screening (ANPE) pipeline and benchmarking.  
