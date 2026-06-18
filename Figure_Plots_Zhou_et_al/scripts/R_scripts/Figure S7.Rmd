@@ -34,6 +34,11 @@ BEAN_FUSE_FL <- read_csv(
 alphagenome_SA_raw <- read.csv(
   here("data", "splicing_analysis", "AlphaGenome_SA.csv")
 )
+
+PE_splicing <- read_csv(
+  here("data", "splicing_analysis", "LDLR_missense_splice_scores.csv")
+)
+
 ```
 
 ```{r fig_S7A}
@@ -311,6 +316,85 @@ ggsave(
 )
 ```
 
+```{r fig_S7D}
+# ---- 1) Classic panel theme (reused from fig_S3C) ----
+panel_theme <- theme_classic() +
+  theme(
+    legend.position = "none",
+    plot.margin = margin(6, 30, 6, 6),  # top, right, bottom, left — more room on the right
+    axis.title.x = element_text(size = 18, color = "black"),
+    axis.title.y = element_text(size = 18, color = "black"),
+    axis.text.x  = element_text(size = 16, color = "black"),
+    axis.text.y  = element_text(size = 16, color = "black")
+  )
+
+# Order bars by delta_splice_usage so the plot is easier to read
+PE_splicing$variant_name <- factor(
+  PE_splicing$variant_name,
+  levels = PE_splicing$variant_name[order(PE_splicing$delta_splice_usage)]
+)
+
+# Assign bar colors by variant prefix
+PE_splicing$bar_color <- case_when(
+  startsWith(as.character(PE_splicing$variant_name), "T713") ~ "#86ED18",
+  startsWith(as.character(PE_splicing$variant_name), "Q770") ~ "#ED7F18"
+)
+
+# Variants whose x-axis label should be bold: synonymous controls
+bold_variants <- c("T713T", "Q770Q")
+
+# Build a vector of fontface values ("bold" or "plain") matching the factor's
+# level order, so ggplot's axis.text.x can use it via element_text(face=...)
+label_faces <- ifelse(levels(PE_splicing$variant_name) %in% bold_variants,
+                      "bold", "plain")
+
+fig_S7D <- ggplot(PE_splicing, aes(x = variant_name, y = delta_splice_usage)) +
+  
+  geom_col(
+    aes(fill = variant_name),
+    color = "black",
+    width = 0.6
+  ) +
+  
+  scale_fill_manual(
+    values = setNames(PE_splicing$bar_color, PE_splicing$variant_name)
+  ) +
+  
+  labs(
+    x = NULL,
+    y = "AlphaGenome splice effect"
+  ) +
+  
+  panel_theme +
+  
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle = 45, hjust = 0, vjust = 0, face = label_faces),
+    axis.ticks.x = element_line(),
+    axis.line.x = element_line()
+  ) +
+  
+  scale_x_discrete(position = "top") +
+  
+  scale_y_continuous(
+    expand = expansion(mult = c(0.05, 0))
+  )
+
+# Printing out figure panel
+fig_S7D
+
+# save figure panel
+ggsave(
+  filename = file.path(here("output", "figure_S7"), "FigS7D.pdf"),
+  plot     = fig_S7D,
+  width    = 10,
+  height   = 4,
+  units    = "in",
+  dpi = 600
+)
+```
+
+
 ```{r printing_fig}
 fig_S7 <- fig_S7A | fig_S7B | fig_S7C
 
@@ -324,4 +408,3 @@ ggsave(
   dpi = 600
 )
 ```
-
