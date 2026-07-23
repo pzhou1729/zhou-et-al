@@ -1,0 +1,14 @@
+Variants induced,Starting codon,Ending codon,Edits position 3 in codon?
+T713G,ACA,GGC,Yes
+T713H,ACA,CAC,Yes
+T713I,ACA,ATC,Yes
+T713K,ACA,AAG,Yes
+T713L,ACA,CTG,Yes
+T713R,ACA,AGG,Yes
+T713T,ACA,ACG,Yes
+Q770Q,CAA,CAG,Yes
+Q770E,CAA,GAG,Yes
+Q770F,CAA,TTC,Yes
+Q770N,CAA,AAC,Yes
+Q770S,CAA,AGC,Yes
+Q770V,CAA,GTG,Yes
