@@ -7,6 +7,8 @@ Note that the code and data used to generate Figure 4 or S4 are not made availab
 
 `Figure_Plots_Zhou_et_al` contains the data, scripts, and outputs relevant to rendering all of the figures in the paper, which are located in the directories `data`, `scripts`, and `output` respectively. 
 
+`LDLR_alphagenome_analysis` contains the analysis scripts used to nominate candidate coding variants that mediate decreased LDL uptake through altering RNA splicing. `LDLR_coding_variant_splicing` was used to measure the effect of variants assayed in our screen on splicing usage at a given locus, and  `LDLR_splicing_ism_full` was used to measure the effect of making individual nucleotide mutations across the exonic region of human LDLR.
+
 `ldlr_fl_analysis` contains scripts for analyzing LDLR-FL raw reporter data (.fastq files).  `reporter_information_reference.csv` is the input file for analysis, `editing_analysis_version1.py` is for analyzing shorter NGS reads, and `editing_analysis_version2.py` is for analyzing longer reads.  
 
 **Description of figures:**  
